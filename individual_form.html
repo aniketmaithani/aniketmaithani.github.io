@@ -140,14 +140,10 @@
                 </div>
             </div>
             <div class="row mt-3">
-                <div class="col-12 text-muted" style="font-size: 0.9em;">
+                <div class="col-12 text-muted text-center" style="font-size: 0.9em;">
                     <strong>Important:</strong> Your access pass will automatically entitle you to all of the above. Please click on the boxes to confirm your presence. In the event you are not planning to attend any part of the above, please drop us a message on +919667360016, so we are able to plan accordingly, given limited seating.
                 </div>
             </div>
-        </div>
-        
-        <div class="mb-3">
-            <button class="btn btn-primary" id="addAttendeeBtn">Add Attendee</button>
         </div>
         
 
@@ -162,7 +158,7 @@
         </div>
 
         <!-- Submit Button -->
-       <center> <button type="submit" class="btn btn-primary btn-lg btn-block mb-5">Submit</button> </center>
+       <center> <button type="submit" class="btn btn-primary btn-lg btn-block mb-5">Make Payment</button> </center>
 
         <!-- Terms and Conditions Modal -->
         <div class="modal fade" id="termsModal" tabindex="-1">
@@ -177,14 +173,14 @@
                         <strong>Security &amp; Entrance Rules:</strong>
                             <ul>
                                 <li>All attendees must be 18 years or above to participate. Formal photo identification will have to be presented at the venue for entrance to be permitted. In case the said documents are not presented or are found to be false, the organisers reserve the right to deny entry.</li>    
-                                <li>We request you not to carry any eatables inside the conference hall.</li>
+                                <li>We request you not to carry any eatables inside the event premises.</li>
                                 <li>Mandatory security checks are an unfortunate but necessary part of an event such as this. We request your cooperation when these checks are conducted by designated security personnel.</li>
                                 <li>No firearms will be permitted inside the premises.</li>
                             </ul>
                             <li>Access to the main Conference Hall is confirmed when you complete the payment and receive your attendance number and receipt.</li>
                             <li>Cocktails will NOT be served to attendees below the age of 21, the management has a legal right to ask for proof of age.</li>
                             <li>Cancellation of confirmed registrations 45 days before the conference will receive a 100% refund (excluding taxes) to the original payment method within 7 working days. Cancellations between 45 to 30 days prior to the conference will receive 50% (excluding taxes).</li>
-                            <li>Lucid Lines Productions Private Limited shall not be considered in default or liable for any damages or refunds in cases of delays or rescheduling due to war, civil riots, epidemics, acts of god, fires, strikes, goverment restriction or other circumstances beyond it's control.</li>
+                            <li>Lucid Lines Productions Private Limited shall not be considered in default or liable for any damages or refunds in cases of delays due to wars, civil riots, epidemics, acts of God, fires, strikes, government restrictions or other circumstances beyond its control.</li>
                         </ul>
                     </div>
                     <div class="modal-footer">
@@ -198,67 +194,13 @@
     <!-- Bootstrap 5 JS and Popper.js -->
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js"></script>
+
     <script>
-                    let attendeesCount = 0;
-
-            document.getElementById('addAttendeeBtn').addEventListener('click', function() {
-                attendeesCount++;
-                
-                if (attendeesCount >= 1) {
-                    this.setAttribute('disabled', true);
-                    this.innerHTML = 'Can only add two persons in total';
-                }
-                
-                addAttendeeForm();
-            });
-
-            function addAttendeeForm() {
-                // Get a reference to the attendee form and the container
-                let form = document.querySelector('.attendeeForm');
-                let container = document.querySelector('.container');
-
-                // Clone the form
-                let newForm = form.cloneNode(true);
-
-                // Append the new form to the container
-                container.insertBefore(newForm, document.getElementById('addAttendeeBtn').parentElement);
-            }
-
-                </script>
-
-                <script>
-                    // Init tooltips
-            // Init tooltips
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-
-            let attendeesCount = 0  ;
-
-            document.getElementById('addAttendeeBtn').addEventListener('click', function() {
-                attendeesCount++;
-                
-                if (attendeesCount >= 1) {
-                    this.setAttribute('disabled', true);
-                    this.innerHTML = 'Can only add two persons in total';
-                }
-                
-                addAttendeeForm();
-            });
-
-            function addAttendeeForm() {
-                // Get a reference to the attendee form and the container
-                let form = document.querySelector('.attendeeForm');
-                let container = document.querySelector('.container');
-
-                // Clone the form
-                let newForm = form.cloneNode(true);
-
-                // Append the new form to the container
-                container.insertBefore(newForm, document.getElementById('addAttendeeBtn').parentElement);
-            }
-
+        // Init tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
     </script>
 </body>
 
