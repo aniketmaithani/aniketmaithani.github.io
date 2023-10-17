@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Form</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa; /* Light grey background for modern theme */
+        }
+        .image-wrapper {
+            height: 280px; /* or whatever height you desire */
+            overflow: hidden; /* so the image doesn't spill out of the wrapper */
+            display: flex;
+            align-items: center; /* to vertically center the image */
+            justify-content: center; /* to horizontally center the image */
+        }
+
+        .banner-image {
+            max-width: 100%;
+            min-height: 100%;
+            display: block;
+            margin: 0; /* Ensure the image itself has no margin */
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .card {
+            border-radius: 15px; /* Rounded corners for modern design */
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); /* Shadow for depth perception */
+        }
+        .card-header {
+            color: #ffffff; /* White color for text */
+            padding: 0; /* Removing any default padding */
+            margin: 0; /* Removing any default margin */
+        }
+        .btn-primary {
+            background-color: #517091; /* Blue color for primary action */
+            border-color: #5b80a7; /* Blue border for primary action */
+        }
+        .btn-secondary {
+            background-color: #6c757d; /* Grey color for secondary action */
+            border-color: #6c757d; /* Grey border for secondary action */
+        }
+        .info-icon {
+            position: sticky;
+            top: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card shadow-lg border-0 rounded-lg">
+                <div class="card-header">
+                    <div class="image-wrapper">
+                        <img src="GF.jpg" alt="Registration Form" class="banner-image">
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form>
+                        <div class="mb-3">
+                            <label for="registrationType" class="form-label">Select Registration Type</label>
+                            <select class="form-select" id="registrationType" onchange="displayForm()">
+                                <option value="0">--Select--</option>
+                                <option value="1">Individual</option>
+                                <option value="2">Family</option>
+                                <option value="3">Group</option>
+                            </select>
+                        </div>
+
+                        <div id="formContent"></div>
+
+                        <!-- Add Attendee Button -->
+                        <div class="mb-3" id="addAttendeeBtnDiv" style="display: none;">
+                            <button type="button" class="btn btn-secondary" onclick="addAttendee()">Add Attendee</button>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="mb-3">
+                            <button type="submit" class="btn btn-primary">Register</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentAttendeeCount = 0;
+    let selectedType = "0";
+
+    function displayForm() {
+        selectedType = document.getElementById("registrationType").value;
+        let formContent = document.getElementById("formContent");
+        let addAttendeeBtnDiv = document.getElementById("addAttendeeBtnDiv");
+
+        // Reset the form content and attendee count each time the type changes
+        formContent.innerHTML = '';
+        currentAttendeeCount = 0;
+
+        if (selectedType === "1") {
+            addAttendeeForm();
+            addAttendeeBtnDiv.style.display = "none";
+        } else if (selectedType === "2" || selectedType === "3") {
+            addAttendeeForm();
+            addAttendeeBtnDiv.style.display = "block";
+        }
+    }
+
+    function addAttendee() {
+        if ((selectedType === "2" && currentAttendeeCount < 2) || 
+            (selectedType === "3" && currentAttendeeCount < 10)) {
+            addAttendeeForm();
+        } else if (selectedType === "2") {
+            alert("You can add a maximum of 2 attendees for a family.");
+        } else {
+            alert("You can add a maximum of 10 attendees for a group.");
+        }
+    }
+
+    function addAttendeeForm() {
+    let formContent = document.getElementById("formContent");
+    currentAttendeeCount++;
+    formContent.innerHTML += createAttendeeForm(currentAttendeeCount);
+    
+    // Explicitly initialize tooltips for the newly added content
+    var tooltipElements = formContent.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltipElements.forEach(function (tooltipEl) {
+        new bootstrap.Tooltip(tooltipEl);
+    });
+}
+
+
+    const createAttendeeForm = (number = "") => `
+    <div class="attendeeForm mb-5">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="firstName${number}">First Name <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your first name"></i></label>
+                <input type="text" class="form-control" id="firstName${number}" placeholder="Enter first name">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="lastName${number}">Last Name <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your last name"></i></label>
+                <input type="text" class="form-control" id="lastName${number}" placeholder="Enter last name">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="profession${number}">Profession <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your profession"></i></label>
+                <input type="text" class="form-control" id="profession${number}" placeholder="Enter profession">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="companyName${number}">Company Name <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your company name"></i></label>
+                <input type="text" class="form-control" id="companyName${number}" placeholder="Enter company name">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="designation${number}">Designation <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your designation"></i></label>
+                <input type="text" class="form-control" id="designation${number}" placeholder="Enter designation">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="phoneNumber${number}">Phone Number <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your phone number along with the country code"></i></label>
+                <div class="input-group">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text" id="countryCodeAddon">+</span>
+                    </div>
+                    <input type="text" class="form-control" id="countryCode${number}" placeholder="Country code" style="max-width: 80px;">
+                    <input type="tel" class="form-control" id="phoneNumber${number}" placeholder="Enter phone number">
+                </div>
+                <small id="phoneNumberHelp" class="form-text text-muted">Please enter a valid phone number along with the country code.</small>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label for="emailID${number}">Email ID <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your email ID"></i></label>
+            <input type="email" class="form-control" id="emailID${number}" placeholder="Enter email ID">
+        </div>
+
+        <!-- Communication Method -->
+        <div class="mb-3">
+            <label for="communication${number}" class="form-label">How would you like us to communicate with you? <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Select your preferred communication method"></i></label>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="communication${number}" id="emailOption${number}" value="email" checked>
+                <label class="form-check-label" for="emailOption${number}">
+                    Email
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="communication${number}" id="whatsappOption${number}" value="whatsapp">
+                <label class="form-check-label" for="whatsappOption${number}">
+                    Whatsapp
+                </label>
+            </div>
+        </div>
+
+        <!-- Social Media Profiles -->
+        <div class="mb-3">
+            <label>Social Media Profiles (optional) <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter your social media profile links"></i></label>
+            <div class="input-group mb-2">
+                <span class="input-group-text"><i class="fab fa-facebook-f"></i></span>
+                <input type="text" class="form-control" placeholder="Facebook Profile Link">
+            </div>
+            <div class="input-group mb-2">
+                <span class="input-group-text"><i class="fab fa-linkedin-in"></i></span>
+                <input type="text" class="form-control" placeholder="LinkedIn Profile Link">
+            </div>
+            <div class="input-group mb-2">
+                <span class="input-group-text"><i class="fab fa-instagram"></i></span>
+                <input type="text" class="form-control" placeholder="Instagram Profile Link">
+            </div>
+        </div>
+
+        <!-- Attendance -->
+        <div class="mb-3">
+            <label>Please select the days you will be attending: <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Select the days you will be attending"></i></label>
+            <div class="mb-3">
+                <strong>Day 1 | 24 February 2024 | Saturday</strong>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day1Conference${number}">
+                    <label class="form-check-label" for="day1Conference${number}">Conference Sessions</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day1Lunch${number}">
+                    <label class="form-check-label" for="day1Lunch${number}">Lunch</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day1Dinner${number}">
+                    <label class="form-check-label" for="day1Dinner${number}">Music, Cocktails, Dinner</label>
+                </div>
+            </div>
+            <div>
+                <strong>Day 2 | 25 February 2024 | Sunday</strong>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day2Conference${number}">
+                    <label class="form-check-label" for="day2Conference${number}">Conference Sessions</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day2Lunch${number}">
+                    <label class="form-check-label" for="day2Lunch${number}">Lunch</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="day2Dinner${number}">
+                    <label class="form-check-label" for="day2Dinner${number}">Music, Cocktails, Dinner</label>
+                </div>
+            </div>
+        </div>
+    </div>
+`;
+
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+  return new bootstrap.Tooltip(tooltipTriggerEl)
+})
+</script>
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/js/all.min.js"></script>
+</body>
+
+</html>
+
