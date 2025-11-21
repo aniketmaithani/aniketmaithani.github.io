@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aniket@portfolio:~$ _</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Code', monospace;
+            background: #0c0c0c;
+            color: #00ff00;
+            overflow: hidden;
+        }
+
+        /* CRT Screen Effect - No flicker */
+        .crt::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 8;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(255, 255, 255, 0.2) 10%, rgba(0, 0, 0, 0.1) 100%);
+            opacity: 0.1;
+            position: fixed;
+            bottom: 100%;
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scanline {
+            0% { bottom: 100%; }
+            100% { bottom: -100px; }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            border: 2px solid #00ff00;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .system-info {
+            font-size: 0.9em;
+        }
+
+        .system-info span {
+            color: #00d4ff;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 15px;
+            font-size: 0.8em;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
+
+        .terminal {
+            flex: 1;
+            border: 2px solid #00ff00;
+            padding: 15px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.8);
+            box-shadow: inset 0 0 50px rgba(0, 255, 0, 0.1);
+        }
+
+        .terminal::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .terminal::-webkit-scrollbar-track {
+            background: #0c0c0c;
+        }
+
+        .terminal::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 5px;
+        }
+
+        .output-line {
+            margin-bottom: 5px;
+            line-height: 1.6;
+            animation: typewriter 0.05s steps(1);
+        }
+
+        @keyframes typewriter {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .prompt {
+            color: #00d4ff;
+        }
+
+        .command {
+            color: #ffff00;
+        }
+
+        .error {
+            color: #ff0000;
+        }
+
+        .success {
+            color: #00ff00;
+        }
+
+        .info {
+            color: #00d4ff;
+        }
+
+        .warning {
+            color: #ffaa00;
+        }
+
+        .input-line {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        #command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #ffff00;
+            font-family: 'Fira Code', monospace;
+            font-size: 1em;
+            outline: none;
+            caret-color: #00ff00;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 20px;
+            background: #00ff00;
+            animation: cursor-blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes cursor-blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        .ascii-art {
+            color: #00d4ff;
+            white-space: pre;
+            font-size: 0.7em;
+            line-height: 1.2;
+        }
+
+        .help-table {
+            margin: 10px 0;
+        }
+
+        .help-row {
+            display: flex;
+            margin: 5px 0;
+        }
+
+        .help-command {
+            width: 200px;
+            color: #ffff00;
+        }
+
+        .help-desc {
+            color: #00ff00;
+        }
+
+        .file-listing {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .file-item {
+            color: #00d4ff;
+            cursor: pointer;
+            padding: 5px;
+            transition: all 0.2s;
+        }
+
+        .file-item:hover {
+            background: rgba(0, 255, 0, 0.1);
+            padding-left: 10px;
+        }
+
+        .folder {
+            color: #7b2ff7;
+        }
+
+        .executable {
+            color: #00ff00;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            border: 1px solid #00ff00;
+            margin: 10px 0;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #00ff00;
+            transition: width 0.1s;
+        }
+
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.05;
+            pointer-events: none;
+        }
+
+        .achievement-popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 0, 0.9);
+            color: #0c0c0c;
+            padding: 15px 25px;
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 20px #00ff00;
+            z-index: 1000;
+            animation: slideIn 0.5s ease-out;
+            display: none;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
+
+        .achievement-popup.show {
+            display: block;
+        }
+
+        .boot-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0c0c0c;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 50px;
+            color: #00ff00;
+        }
+
+        .boot-line {
+            margin: 2px 0;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .file-listing {
+                grid-template-columns: 1fr;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body class="crt">
+    <div class="scanline"></div>
+    <canvas class="matrix-bg" id="matrix"></canvas>
+    
+    <div class="boot-screen" id="boot-screen">
+        <div id="boot-text"></div>
+    </div>
+
+    <div class="achievement-popup" id="achievement">
+        <strong>ACHIEVEMENT UNLOCKED:</strong> <span id="achievement-text"></span>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div class="system-info">
+                    <span>ANIKET_PORTFOLIO_OS</span> v13.0.2025 LTS | Kernel: <span id="kernel-version">5.15.0-fintech</span>
+                </div>
+                <div class="status-bar">
+                    <div class="status-item">
+                        <div class="led"></div>
+                        <span>ONLINE</span>
+                    </div>
+                    <div class="status-item">
+                        <span id="current-time">00:00:00</span>
+                    </div>
+                    <div class="status-item">
+                        <span>UPTIME: <span id="uptime">13y 0m</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal" id="terminal">
+            <!-- Terminal output will be inserted here -->
+        </div>
+
+        <div class="input-line">
+            <span class="prompt" id="prompt">guest@aniket-portfolio:~$</span>
+            <input type="text" id="command-input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        // Matrix rain effect
+        const matrixCanvas = document.getElementById('matrix');
+        const matrixCtx = matrixCanvas.getContext('2d');
+        matrixCanvas.width = window.innerWidth;
+        matrixCanvas.height = window.innerHeight;
+
+        const matrixChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
+        const fontSize = 14;
+        const columns = matrixCanvas.width / fontSize;
+        const drops = [];
+
+        for (let i = 0; i < columns; i++) {
+            drops[i] = 1;
+        }
+
+        function drawMatrix() {
+            matrixCtx.fillStyle = 'rgba(12, 12, 12, 0.05)';
+            matrixCtx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+            
+            matrixCtx.fillStyle = '#00ff00';
+            matrixCtx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = matrixChars.charAt(Math.floor(Math.random() * matrixChars.length));
+                matrixCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > matrixCanvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(drawMatrix, 35);
+
+        // Boot sequence
+        const bootMessages = [
+            'Initializing Aniket Portfolio System...',
+            'Loading kernel modules...',
+            '[  OK  ] Started Career Management Service',
+            '[  OK  ] Started DevOps Engine',
+            '[  OK  ] Started Fintech Core',
+            '[  OK  ] Started Leadership Module',
+            '[  OK  ] Mounted /experience (13 years)',
+            '[  OK  ] Mounted /skills (20+ technologies)',
+            '[  OK  ] Mounted /achievements ($800K funding)',
+            'Loading user profile...',
+            'Profile: Aniket Maithani - Sr. Engineering Manager @ Paytm',
+            'System ready. Type "help" for available commands.',
+            ''
+        ];
+
+        let bootIndex = 0;
+        const bootText = document.getElementById('boot-text');
+
+        function bootSequence() {
+            if (bootIndex < bootMessages.length) {
+                const line = document.createElement('div');
+                line.className = 'boot-line';
+                line.textContent = bootMessages[bootIndex];
+                bootText.appendChild(line);
+                bootIndex++;
+                setTimeout(bootSequence, bootIndex === bootMessages.length ? 500 : 100);
+            } else {
+                setTimeout(() => {
+                    document.getElementById('boot-screen').style.display = 'none';
+                    initTerminal();
+                }, 1000);
+            }
+        }
+
+        bootSequence();
+
+        // Terminal system
+        const terminal = document.getElementById('terminal');
+        const commandInput = document.getElementById('command-input');
+        const prompt = document.getElementById('prompt');
+        
+        let currentUser = 'guest';
+        let currentDir = '~';
+        let commandHistory = [];
+        let historyIndex = -1;
+        let achievementsUnlocked = new Set();
+        let commandCount = 0;
+
+        // File system structure
+        const fileSystem = {
+            '~': {
+                type: 'directory',
+                contents: {
+                    'README.md': { type: 'file', content: 'readmeContent' },
+                    'experience': { type: 'directory', contents: {} },
+                    'skills': { type: 'directory', contents: {} },
+                    'education': { type: 'directory', contents: {} },
+                    'publications': { type: 'directory', contents: {} },
+                    'achievements.txt': { type: 'file', content: 'achievementsContent' },
+                    'contact.txt': { type: 'file', content: 'contactContent' },
+                    '.secrets': { type: 'directory', contents: {} }
+                }
+            }
+        };
+
+        // File contents
+        const fileContents = {
+            readmeContent: `
+# Aniket Maithani - Portfolio Terminal
+
+Welcome to my interactive portfolio!
+
+## About Me
+Sr. Engineering Manager at Paytm leading the Gold Division.
+13+ years experience in fintech, DevOps, and software engineering.
+
+## Quick Stats
+- Team Size: 15+ engineers
+- GMV Growth: 2x in 2 months
+- Funding Raised: $800K USD
+- Monthly Transactions: $2M+
+
+## Navigation
+Use the following commands to explore:
+- ls          : List contents
+- cd <dir>    : Change directory
+- cat <file>  : Read file
+- help        : Show all commands
+
+Type 'help' for complete command list.
+`,
+            achievementsContent: `
+=== KEY ACHIEVEMENTS ===
+
+💰 Funding Success
+   - Helped secure $800K USD funding at GetPlus
+   - Technical leadership contributed to investor confidence
+
+📈 Business Impact
+   - 2x GMV increase at Paytm within 2 months
+   - 1.5x QoQ revenue growth at GetPlus
+   - Improved payment success rates from 75% to 92%
+
+💻 Technical Excellence
+   - Built fintech platforms processing $2M+ monthly
+   - Reduced infrastructure costs by 40%
+   - Zero-downtime cloud migrations
+   - 99.99% system uptime
+
+👥 Leadership
+   - Led teams of 15+ engineers
+   - Mentored multiple engineering managers
+   - Built high-performing cross-functional teams
+
+🔒 Security & Compliance
+   - Implemented PCI-DSS standards
+   - ISO 27001 compliance
+   - RBI regulatory requirements
+`,
+            contactContent: `
+=== CONTACT INFORMATION ===
+
+📧 Email: maithani.aniket@gmail.com
+
+📱 Phone: +91-9880063438
+          +91-7310723674
+
+🌍 Location: Gurgaon, India
+
+🔗 Links:
+   LinkedIn: https://linkedin.com/in/aniketmaithani
+   Stack Overflow: https://stackoverflow.com/users/aniketmaithani
+   Blog: https://berozgaarcoder.in
+   GitHub: Available on request
+
+💼 Current Role:
+   Sr. Engineering Manager @ Paytm
+   Leading Gold Division (15+ engineers)
+
+⏰ Status: Open to interesting opportunities
+   Especially: Remote roles, Engineering Leadership
+`
+        };
+
+        // Experience data
+        const experienceData = {
+            'paytm.txt': `
+╔════════════════════════════════════════════════════════════╗
+║                    PAYTM (2025 - Present)                  ║
+║              Sr. Engineering Manager - Gold Division        ║
+╚════════════════════════════════════════════════════════════╝
+
+📍 Location: Noida, India
+📅 Duration: January 2025 - Present
+
+🎯 ROLE & RESPONSIBILITIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Leading team of 15+ engineers across backend, frontend, DevOps, and QA
+▸ Managing Paytm Gold Division - high-stakes fintech product
+▸ Architecting PCI-DSS compliant systems handling millions in transactions
+▸ Strategic architectural decisions for scaling financial systems
+
+🏆 KEY ACHIEVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ 2x GMV increase within first 2 months
+✓ Processing 500K+ daily transactions
+✓ Maintained 99.99% uptime
+✓ Sub-200ms transaction latency
+✓ Managing payment gateway integrations
+✓ KYC/AML compliance implementation
+
+💻 TECHNICAL STACK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Backend: Django, Python, PostgreSQL
+• Infrastructure: AWS, Kubernetes, Docker
+• Payments: Multiple gateway integrations
+• Security: PCI-DSS, encryption, fraud detection
+• Monitoring: Prometheus, Grafana, ELK
+`,
+            'getplus-cto.txt': `
+╔════════════════════════════════════════════════════════════╗
+║                 GETPLUS (2022 - 2024)                      ║
+║              Chief Technical Officer (CTO)                  ║
+╚════════════════════════════════════════════════════════════╝
+
+📍 Location: Remote
+📅 Duration: December 2022 - December 2024
+
+🎯 ROLE & RESPONSIBILITIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Led cross-functional team of 10+ engineers
+▸ Built fintech platform from ground up
+▸ Architected payment infrastructure
+▸ Managed all technical aspects from architecture to deployment
+
+🏆 KEY ACHIEVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Secured $800K USD funding across two rounds
+✓ Built platform processing $2M+ monthly transactions
+✓ Improved payment success: 75% → 92%
+✓ Reduced infrastructure costs by 40%
+✓ Scaled to handle 10x traffic growth
+✓ 1.5x quarter-over-quarter revenue growth
+✓ Implemented ISO 27001 compliance
+
+💻 TECHNICAL STACK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Backend: Django, Python, PostgreSQL
+• Frontend: React, React Native
+• Infrastructure: AWS, Terraform, Ansible
+• Payments: Razorpay, Cashfree, Paytm
+• DevOps: Docker, Kubernetes, Jenkins
+• Security: DevSecOps, CIS Benchmarks
+
+💡 IMPACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Technical leadership directly contributed to funding success.
+Built scalable fintech infrastructure that became acquisition target.
+`,
+            'consultant.txt': `
+╔════════════════════════════════════════════════════════════╗
+║            TECHNICAL CONSULTANT (2021 - 2022)              ║
+║                  Independent Consultant                     ║
+╚════════════════════════════════════════════════════════════╝
+
+📍 Location: Bengaluru/Gurgaon
+📅 Duration: September 2021 - December 2022
+
+🎯 SERVICES PROVIDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ DevOps transformation and automation
+▸ Cloud infrastructure optimization
+▸ CI/CD pipeline implementation
+▸ Team training and mentoring
+
+🏆 KEY ACHIEVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Reduced deployment time by 40%
+✓ Implemented IaC with Terraform
+✓ Established DevOps culture at multiple startups
+✓ Achieved 99.9% uptime SLA compliance
+✓ Automated CI/CD for better delivery
+
+💻 TECHNOLOGIES USED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Cloud: AWS, GCP
+• IaC: Terraform, Ansible, CloudFormation
+• CI/CD: Jenkins, GitLab CI, GitHub Actions
+• Containers: Docker, Kubernetes
+• Monitoring: Prometheus, Grafana
+`,
+            'earlier-roles.txt': `
+╔════════════════════════════════════════════════════════════╗
+║              EARLIER CAREER (2014 - 2021)                  ║
+╚════════════════════════════════════════════════════════════╝
+
+📋 GALE AGENCY - Team Lead (2021)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Led data extraction and sanitization projects
+▸ Built web applications with ReactJS and Python
+▸ Implemented AWS data solutions (Redshift, Athena, RDS)
+
+📋 PATCHUS COMMUNICATIONS - Sr. Software Engineer (2018-2021)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Built CI/CD pipelines from scratch
+▸ Implemented IaC for infrastructure provisioning
+▸ Led zero-downtime AWS to GCP migration
+▸ Orchestrated Docker and Kubernetes environments
+
+📋 RADIOWALLA NETWORKS - Product Manager/Sr. Architect (2016-2018)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Developed video analytics pipeline with Python & OpenCV
+▸ Created ML models achieving 90%+ accuracy
+▸ Reduced processing time by 50%
+▸ Integrated analytics into security systems
+
+📋 NEURONME - Software Developer (2014-2016)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ Designed ML pipelines with TensorFlow and scikit-learn
+▸ Built scalable data processing on AWS
+▸ Created models achieving 95% accuracy
+▸ Reduced training time by 50% and latency by 75%
+
+🌟 PROGRESSION TIMELINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2014: Software Developer
+2016: Product Manager / Sr. Architect
+2018: Sr. Software Engineer
+2021: Team Lead → Technical Consultant
+2022: Chief Technical Officer
+2025: Sr. Engineering Manager @ Paytm
+
+From code to leadership - 13 years of continuous growth! 🚀
+`
+        };
+
+        // Skills data
+        const skillsData = {
+            'cloud.txt': `
+☁️ CLOUD & INFRASTRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AWS (Expert Level) ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• EC2, S3, RDS, Lambda, ECS, EKS
+• CloudFormation, CloudWatch
+• Cost optimization (40% reduction achieved)
+• High-traffic infrastructure design
+
+GCP (Advanced) ████████████████░░░░░ 80%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Compute Engine, Cloud Storage
+• BigQuery, Cloud Functions
+• Successfully led AWS → GCP migration
+
+Azure (Intermediate) ████████████░░░░░░░░ 60%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Virtual Machines, Blob Storage
+• Azure DevOps, App Services
+`,
+            'devops.txt': `
+🔄 DEVOPS & AUTOMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CI/CD Pipelines ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Jenkins, GitLab CI, GitHub Actions
+• Automated testing and deployment
+• Blue-green and canary deployments
+
+Containerization ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Docker (advanced)
+• Kubernetes orchestration
+• Helm charts and operators
+
+Infrastructure as Code ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Terraform (multi-cloud)
+• Ansible automation
+• CloudFormation
+• Configuration management
+
+Monitoring & Observability ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Prometheus, Grafana
+• ELK Stack (Elasticsearch, Logstash, Kibana)
+• APM tools, distributed tracing
+`,
+            'programming.txt': `
+💻 PROGRAMMING & FRAMEWORKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Python ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Django, Flask, FastAPI
+• Data processing, ML pipelines
+• Automation scripts
+
+JavaScript ████████████████░░░░ 80%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Node.js backend development
+• React, React Native
+• Modern ES6+ features
+
+SQL & Databases ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• PostgreSQL (advanced)
+• MySQL, MongoDB
+• Query optimization
+• Database design and scaling
+`,
+            'fintech.txt': `
+💰 FINTECH EXPERTISE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Payment Gateway Integration ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Razorpay, Cashfree, Paytm
+• Payment reconciliation systems
+• Webhook handling
+• Success rate optimization (75% → 92%)
+
+Digital Gold Trading ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Real-time price feeds
+• Buy/sell execution
+• Wallet management
+• Portfolio tracking
+• SIP implementations
+
+Compliance & Security ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• PCI-DSS standards
+• ISO 27001 compliance
+• KYC/AML workflows
+• RBI regulatory requirements
+• Fraud detection systems
+
+Transaction Processing ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Processing $2M+ monthly
+• 500K+ daily transactions
+• 99.99% uptime
+• Sub-200ms latency
+`,
+            'leadership.txt': `
+👥 LEADERSHIP & MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Team Leadership ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Leading 15+ engineers currently
+• Built and managed teams of 10-15
+• Cross-functional collaboration
+• Performance management
+
+Technical Mentoring ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Mentored engineering managers
+• Code reviews and best practices
+• Architecture guidance
+• Career development
+
+Product & Strategy ██████████████████░░ 90%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Product roadmap planning
+• Technical strategy
+• Business impact focus
+• Stakeholder management
+
+Project Management ████████████████████░ 95%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Agile/Scrum methodologies
+• Sprint planning and execution
+• Risk management
+• Delivery excellence
+
+🎯 IMPACT METRICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ 2x GMV growth achieved
+✓ $800K funding secured
+✓ 1.5x revenue growth driven
+✓ Built high-performing teams across 3 organizations
+✓ Zero attrition in teams led
+`
+        };
+
+        // Education data
+        const educationData = {
+            'msc.txt': `
+🎓 MASTER OF SCIENCE (M.Sc.) IN INFORMATION TECHNOLOGY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏛️  Institution: Uttarakhand Technical University
+📍 Location: Dehradun, India
+📅 Duration: June 2017 - June 2018
+📊 Grade: 72% Aggregate
+
+📚 KEY SUBJECTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Operating Systems
+• Data Structures
+• Human-Computer Interaction
+• Advanced Programming
+• Software Engineering
+• Database Management Systems
+`,
+            'btech.txt': `
+🎓 BACHELOR OF TECHNOLOGY (B.Tech.) IN COMPUTER SCIENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏛️  Institution: Amity University
+📍 Location: Noida, India
+📅 Duration: June 2010 - June 2014
+📊 Grade: 68% Aggregate, A+ in Final Year Project
+
+📚 KEY SUBJECTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Programming Languages (C, C++, Java, Python)
+• Computer Architecture
+• Artificial Intelligence & Machine Learning
+• Distributed Systems
+• Cloud Computing
+• Network Security
+• Operating Systems
+• Database Management
+
+🏆 HIGHLIGHTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ A+ Grade in Final Year Project
+✓ Strong foundation in CS fundamentals
+✓ Focus on AI/ML and Cloud Computing
+✓ Leadership in technical student groups
+`,
+            'certifications.txt': `
+📜 CERTIFICATIONS & CONTINUOUS LEARNING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☁️  AWS CERTIFICATIONS (Self-Study)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• AWS Solutions Architect (Practical Experience)
+• AWS DevOps Professional (On-the-job Training)
+
+🐳 CONTAINER & ORCHESTRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Docker Certified (Practical)
+• Kubernetes Administration (CKA-level knowledge)
+
+🔒 SECURITY & COMPLIANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• ISO 27001 Implementation Experience
+• PCI-DSS Compliance Implementation
+• DevSecOps Best Practices
+
+📚 CONTINUOUS LEARNING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Active Stack Overflow contributor
+• Technical blog writer (BerozgaarCoder)
+• Open source contributions
+• Conference participation
+
+💡 AREAS OF EXPERTISE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ 13 years of hands-on experience
+✓ Self-taught in advanced DevOps practices
+✓ Real-world fintech expertise
+✓ Proven track record in production environments
+`
+        };
+
+        // Publications data
+        const publicationsData = {
+            'research-paper.txt': `
+📝 RESEARCH PAPER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Title: An Introduction to Effective Cloud Management 
+       with Monitoring as a Service
+
+Published: IJITEE (International Journal of Innovative 
+          Technology and Exploring Engineering)
+
+🔗 Link: https://www.academia.edu/6751636/IJITEE_An_introduction
+        _to_Effective_Cloud_Management_with_Monitoring_as_a_Service
+
+📋 ABSTRACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Research on cloud monitoring strategies and effective management
+practices for distributed systems. Explores Monitoring as a Service
+(MaaS) approaches for cloud infrastructure.
+
+🎯 KEY TOPICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Cloud resource monitoring
+• Performance metrics and KPIs
+• Automated alerting systems
+• Cost optimization through monitoring
+• Best practices for cloud management
+
+💡 IMPACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Early contribution to cloud monitoring methodologies
+that are now widely adopted in the industry.
+`,
+            'book-review.txt': `
+📚 TECHNICAL BOOK REVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Publisher: Packt Publishing
+Role: Technical Reviewer
+
+🔗 Link: https://api.pageplace.de/preview/DT0400.9781783553341
+        _A24173587/preview-9781783553341_A24173587.pdf
+
+📋 RESPONSIBILITIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Technical accuracy verification
+• Code review and testing
+• Best practices validation
+• Reader experience optimization
+
+🎯 CONTRIBUTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ensured technical content quality and accuracy for
+publication, helping developers learn best practices
+in modern software development.
+`,
+            'blog.txt': `
+✍️  PERSONAL BLOG - BEROZGAARCODER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Tagline: "Code Ka Jugaad"
+🔗 Link: https://berozgaarcoder.in
+
+📝 ABOUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Personal blog sharing:
+• Technical insights and tutorials
+• Career journey and experiences
+• Lessons learned in leadership
+• Fintech industry perspectives
+• Work-life balance thoughts
+
+🎯 TOPICS COVERED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• DevOps and Cloud Computing
+• Engineering Management
+• Fintech Technology Stack
+• Career Growth Strategies
+• Personal Development
+
+💡 PHILOSOPHY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"Jugaad" - Finding creative, resourceful solutions
+to complex problems. Sharing authentic experiences
+from the trenches of software engineering.
+
+📊 REACH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Building a community of engineers who value:
+✓ Authentic experiences
+✓ Practical knowledge
+✓ Continuous learning
+✓ Honest conversations about tech careers
+`
+        };
+
+        // Populate file system
+        fileSystem['~'].contents.experience.contents = {
+            'paytm.txt': { type: 'file', content: experienceData['paytm.txt'] },
+            'getplus-cto.txt': { type: 'file', content: experienceData['getplus-cto.txt'] },
+            'consultant.txt': { type: 'file', content: experienceData['consultant.txt'] },
+            'earlier-roles.txt': { type: 'file', content: experienceData['earlier-roles.txt'] }
+        };
+
+        fileSystem['~'].contents.skills.contents = {
+            'cloud.txt': { type: 'file', content: skillsData['cloud.txt'] },
+            'devops.txt': { type: 'file', content: skillsData['devops.txt'] },
+            'programming.txt': { type: 'file', content: skillsData['programming.txt'] },
+            'fintech.txt': { type: 'file', content: skillsData['fintech.txt'] },
+            'leadership.txt': { type: 'file', content: skillsData['leadership.txt'] }
+        };
+
+        fileSystem['~'].contents.education.contents = {
+            'msc.txt': { type: 'file', content: educationData['msc.txt'] },
+            'btech.txt': { type: 'file', content: educationData['btech.txt'] },
+            'certifications.txt': { type: 'file', content: educationData['certifications.txt'] }
+        };
+
+        fileSystem['~'].contents.publications.contents = {
+            'research-paper.txt': { type: 'file', content: publicationsData['research-paper.txt'] },
+            'book-review.txt': { type: 'file', content: publicationsData['book-review.txt'] },
+            'blog.txt': { type: 'file', content: publicationsData['blog.txt'] }
+        };
+
+        fileSystem['~'].contents['.secrets'].contents = {
+            'konami.txt': { type: 'file', content: '🎮 You found the secret! Achievement unlocked!' }
+        };
+
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+            document.getElementById('current-time').textContent = timeStr;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Initialize terminal
+        function initTerminal() {
+            printWelcome();
+            commandInput.focus();
+        }
+
+        function printWelcome() {
+            const asciiArt = `
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║                                                               ║
+    ║     █████╗ ███╗   ██╗██╗██╗  ██╗███████╗████████╗           ║
+    ║    ██╔══██╗████╗  ██║██║██║ ██╔╝██╔════╝╚══██╔══╝           ║
+    ║    ███████║██╔██╗ ██║██║█████╔╝ █████╗     ██║              ║
+    ║    ██╔══██║██║╚██╗██║██║██╔═██╗ ██╔══╝     ██║              ║
+    ║    ██║  ██║██║ ╚████║██║██║  ██╗███████╗   ██║              ║
+    ║    ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝              ║
+    ║                                                               ║
+    ║          MAITHANI PORTFOLIO OPERATING SYSTEM                 ║
+    ║                    Version 13.0.2025                          ║
+    ║                                                               ║
+    ╚═══════════════════════════════════════════════════════════════╝
+`;
+            printOutput(asciiArt, 'ascii-art');
+            printOutput('');
+            printOutput('Welcome to my interactive portfolio terminal!', 'success');
+            printOutput('13+ years of engineering excellence, now in terminal form.', 'info');
+            printOutput('');
+            printOutput('Quick Start:', 'warning');
+            printOutput('  • Type "help" to see all available commands', 'info');
+            printOutput('  • Type "whoami" to learn about me', 'info');
+            printOutput('  • Type "ls" to explore the file system', 'info');
+            printOutput('');
+            printOutput('Pro tip: This terminal has hidden achievements. Explore to find them!', 'warning');
+            printOutput('');
+        }
+
+        function printOutput(text, className = '') {
+            const line = document.createElement('div');
+            line.className = 'output-line ' + className;
+            line.textContent = text;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function printPrompt(command) {
+            const line = document.createElement('div');
+            line.className = 'output-line';
+            line.innerHTML = `<span class="prompt">${currentUser}@aniket-portfolio:${currentDir}$</span> <span class="command">${command}</span>`;
+            terminal.appendChild(line);
+        }
+
+        // Command handlers
+        const commands = {
+            help: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              AVAILABLE COMMANDS                            ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                
+                const helpCommands = [
+                    ['help', 'Display this help message'],
+                    ['clear', 'Clear the terminal screen'],
+                    ['whoami', 'Display information about me'],
+                    ['ls [dir]', 'List directory contents'],
+                    ['cd <dir>', 'Change directory'],
+                    ['pwd', 'Print working directory'],
+                    ['cat <file>', 'Display file contents'],
+                    ['tree', 'Display directory tree'],
+                    ['stats', 'Show career statistics'],
+                    ['skills', 'Display skills overview'],
+                    ['timeline', 'Show career timeline'],
+                    ['contact', 'Display contact information'],
+                    ['resume', 'Download resume'],
+                    ['social', 'Show social media links'],
+                    ['sudo', 'Try admin access (fun easter egg)'],
+                    ['history', 'Show command history'],
+                    ['exit', 'Exit the terminal (just kidding!)']
+                ];
+
+                helpCommands.forEach(([cmd, desc]) => {
+                    const line = `  ${cmd.padEnd(20)} ${desc}`;
+                    printOutput(line, 'help-desc');
+                });
+
+                printOutput('');
+                printOutput('Navigation Tips:', 'warning');
+                printOutput('  • Use Tab for autocomplete (coming soon!)', 'info');
+                printOutput('  • Use Up/Down arrows for command history', 'info');
+                printOutput('  • Commands are case-insensitive', 'info');
+                printOutput('');
+
+                checkAchievement('help_explorer', 'RTFM Master', 'You actually read the help!');
+            },
+
+            clear: () => {
+                terminal.innerHTML = '';
+            },
+
+            whoami: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              ANIKET MAITHANI                               ║', 'info');
+                printOutput('║      Sr. Engineering Manager | Fintech Leader              ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                printOutput('👤 Profile:', 'warning');
+                printOutput('  • 13+ years in software engineering and DevOps', 'info');
+                printOutput('  • Currently: Sr. Engineering Manager @ Paytm', 'success');
+                printOutput('  • Leading: Gold Division (15+ engineers)', 'success');
+                printOutput('  • Expertise: Fintech, DevOps, Cloud, Leadership', 'info');
+                printOutput('');
+                printOutput('🏆 Quick Stats:', 'warning');
+                printOutput('  • GMV Growth: 2x in 2 months', 'success');
+                printOutput('  • Funding Raised: $800K USD', 'success');
+                printOutput('  • Monthly Transactions: $2M+', 'success');
+                printOutput('  • Team Size: 15+ engineers', 'success');
+                printOutput('');
+                printOutput('💡 Philosophy:', 'warning');
+                printOutput('  "Building scalable systems that drive business impact"', 'info');
+                printOutput('');
+                printOutput('Type "cat README.md" for more details!', 'warning');
+                printOutput('');
+
+                checkAchievement('identity', 'Identity Quest', 'You discovered who I am!');
+            },
+
+            ls: (args) => {
+                const path = args[0] || '.';
+                printOutput('');
+                
+                let targetDir;
+                let displayPath;
+
+                if (path === '~' || path === '/' || path === '.') {
+                    // List current directory
+                    const parts = currentDir === '~' ? [] : currentDir.replace('~/', '').split('/').filter(p => p);
+                    targetDir = fileSystem['~'].contents;
+                    
+                    for (const part of parts) {
+                        if (targetDir[part] && targetDir[part].type === 'directory') {
+                            targetDir = targetDir[part].contents;
+                        }
+                    }
+                    displayPath = currentDir;
+                } else if (path === '..') {
+                    // List parent directory
+                    if (currentDir === '~') {
+                        printOutput('Already at root directory', 'warning');
+                        return;
+                    }
+                    const parts = currentDir.replace('~/', '').split('/').filter(p => p);
+                    parts.pop();
+                    
+                    targetDir = fileSystem['~'].contents;
+                    for (const part of parts) {
+                        if (targetDir[part] && targetDir[part].type === 'directory') {
+                            targetDir = targetDir[part].contents;
+                        }
+                    }
+                    displayPath = parts.length > 0 ? '~/' + parts.join('/') : '~';
+                } else {
+                    // List specified directory
+                    const fullPath = currentDir === '~' ? path : currentDir.replace('~/', '') + '/' + path;
+                    const parts = fullPath.split('/').filter(p => p && p !== '~');
+                    
+                    targetDir = fileSystem['~'].contents;
+                    for (const part of parts) {
+                        if (targetDir[part]) {
+                            if (targetDir[part].type === 'directory') {
+                                targetDir = targetDir[part].contents;
+                            } else {
+                                printOutput(`ls: cannot access '${path}': Not a directory`, 'error');
+                                return;
+                            }
+                        } else {
+                            printOutput(`ls: cannot access '${path}': No such file or directory`, 'error');
+                            return;
+                        }
+                    }
+                    displayPath = path;
+                }
+
+                if (!targetDir) {
+                    printOutput(`ls: cannot access '${path}': No such file or directory`, 'error');
+                    return;
+                }
+
+                printOutput(`Contents of ${displayPath}:`, 'info');
+                printOutput('');
+
+                const items = Object.entries(targetDir);
+                if (items.length === 0) {
+                    printOutput('  (empty directory)', 'warning');
+                } else {
+                    items.forEach(([name, item]) => {
+                        const icon = item.type === 'directory' ? '📁' : '📄';
+                        const className = item.type === 'directory' ? 'folder' : 'info';
+                        printOutput(`  ${icon} ${name}`, className);
+                    });
+                }
+
+                printOutput('');
+                checkAchievement('explorer', 'File Explorer', 'You started exploring my portfolio!');
+            },
+
+            cd: (args) => {
+                if (!args[0]) {
+                    currentDir = '~';
+                    updatePrompt();
+                    return;
+                }
+
+                const target = args[0];
+                if (target === '~' || target === '/') {
+                    currentDir = '~';
+                    updatePrompt();
+                    return;
+                }
+
+                if (target === '..') {
+                    if (currentDir !== '~') {
+                        const parts = currentDir.split('/').filter(p => p && p !== '~');
+                        if (parts.length > 1) {
+                            parts.pop();
+                            currentDir = '~/' + parts.join('/');
+                        } else {
+                            currentDir = '~';
+                        }
+                    }
+                    updatePrompt();
+                    return;
+                }
+
+                // Handle relative path
+                let newPath;
+                if (currentDir === '~') {
+                    newPath = target;
+                } else {
+                    newPath = currentDir.replace('~/', '') + '/' + target;
+                }
+
+                // Check if target exists in current directory
+                const parts = newPath.split('/').filter(p => p);
+                let current = fileSystem['~'].contents;
+                let isValid = true;
+
+                for (const part of parts) {
+                    if (current[part]) {
+                        if (current[part].type === 'directory') {
+                            current = current[part].contents;
+                        } else {
+                            printOutput(`cd: ${target}: Not a directory`, 'error');
+                            return;
+                        }
+                    } else {
+                        isValid = false;
+                        break;
+                    }
+                }
+
+                if (isValid) {
+                    currentDir = '~/' + parts.join('/');
+                    updatePrompt();
+                } else {
+                    printOutput(`cd: ${target}: No such directory`, 'error');
+                }
+            },
+
+            pwd: () => {
+                printOutput(`/home/aniket/${currentDir === '~' ? '' : currentDir.replace('~/', '')}`, 'info');
+            },
+
+            cat: (args) => {
+                if (!args[0]) {
+                    printOutput('cat: missing file operand', 'error');
+                    printOutput('Try "cat <filename>"', 'warning');
+                    return;
+                }
+
+                const fileName = args[0];
+                
+                // Navigate to the file
+                const parts = currentDir === '~' ? [] : currentDir.replace('~/', '').split('/').filter(p => p);
+                let current = fileSystem['~'].contents;
+                
+                // Navigate to current directory
+                for (const part of parts) {
+                    if (current[part] && current[part].type === 'directory') {
+                        current = current[part].contents;
+                    }
+                }
+
+                // Get the file
+                const file = current[fileName];
+
+                if (!file) {
+                    printOutput(`cat: ${fileName}: No such file or directory`, 'error');
+                    return;
+                }
+
+                if (file.type === 'directory') {
+                    printOutput(`cat: ${fileName}: Is a directory`, 'error');
+                    return;
+                }
+
+                printOutput('');
+                if (file.content && fileContents[file.content]) {
+                    printOutput(fileContents[file.content], 'info');
+                } else if (typeof file.content === 'string' && !fileContents[file.content]) {
+                    printOutput(file.content, 'info');
+                }
+                printOutput('');
+
+                if (fileName.includes('secret') || fileName.includes('konami')) {
+                    checkAchievement('secrets', 'Secret Hunter', 'You found hidden secrets!');
+                }
+            },
+
+            tree: () => {
+                printOutput('');
+                printOutput('~/', 'info');
+                printOutput('├── 📄 README.md', 'info');
+                printOutput('├── 📁 experience/', 'folder');
+                printOutput('│   ├── 📄 paytm.txt', 'info');
+                printOutput('│   ├── 📄 getplus-cto.txt', 'info');
+                printOutput('│   ├── 📄 consultant.txt', 'info');
+                printOutput('│   └── 📄 earlier-roles.txt', 'info');
+                printOutput('├── 📁 skills/', 'folder');
+                printOutput('│   ├── 📄 cloud.txt', 'info');
+                printOutput('│   ├── 📄 devops.txt', 'info');
+                printOutput('│   ├── 📄 programming.txt', 'info');
+                printOutput('│   ├── 📄 fintech.txt', 'info');
+                printOutput('│   └── 📄 leadership.txt', 'info');
+                printOutput('├── 📁 education/', 'folder');
+                printOutput('│   ├── 📄 msc.txt', 'info');
+                printOutput('│   ├── 📄 btech.txt', 'info');
+                printOutput('│   └── 📄 certifications.txt', 'info');
+                printOutput('├── 📁 publications/', 'folder');
+                printOutput('│   ├── 📄 research-paper.txt', 'info');
+                printOutput('│   ├── 📄 book-review.txt', 'info');
+                printOutput('│   └── 📄 blog.txt', 'info');
+                printOutput('├── 📄 achievements.txt', 'info');
+                printOutput('├── 📄 contact.txt', 'info');
+                printOutput('└── 📁 .secrets/', 'folder');
+                printOutput('    └── 📄 ???', 'warning');
+                printOutput('');
+
+                checkAchievement('tree', 'Tree Hugger', 'You viewed the entire structure!');
+            },
+
+            stats: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              CAREER STATISTICS                             ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                
+                simulateProgress('Loading stats', () => {
+                    printOutput('');
+                    printOutput('📊 Experience:', 'warning');
+                    printOutput('  Years in Industry        : 13 years', 'success');
+                    printOutput('  Companies Worked         : 7', 'success');
+                    printOutput('  Current Role             : Sr. Engineering Manager', 'success');
+                    printOutput('');
+                    printOutput('👥 Leadership:', 'warning');
+                    printOutput('  Team Members Led         : 15+ (current)', 'success');
+                    printOutput('  Engineers Mentored       : 50+', 'success');
+                    printOutput('  Organizations Led        : 3', 'success');
+                    printOutput('');
+                    printOutput('💰 Business Impact:', 'warning');
+                    printOutput('  GMV Growth               : 2x in 2 months', 'success');
+                    printOutput('  Revenue Growth           : 1.5x QoQ', 'success');
+                    printOutput('  Funding Secured          : $800K USD', 'success');
+                    printOutput('  Monthly Transactions     : $2M+', 'success');
+                    printOutput('  Payment Success Rate     : 75% → 92%', 'success');
+                    printOutput('');
+                    printOutput('💻 Technical:', 'warning');
+                    printOutput('  Infrastructure Cost Cut  : 40%', 'success');
+                    printOutput('  Deployment Time Reduced  : 40%', 'success');
+                    printOutput('  System Uptime            : 99.99%', 'success');
+                    printOutput('  Daily Transactions       : 500K+', 'success');
+                    printOutput('');
+                });
+
+                checkAchievement('stats', 'Data Analyst', 'You checked out my stats!');
+            },
+
+            skills: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              SKILLS OVERVIEW                               ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                printOutput('💡 For detailed skills, explore:', 'warning');
+                printOutput('  cd skills/', 'command');
+                printOutput('  cat cloud.txt    - Cloud & Infrastructure', 'info');
+                printOutput('  cat devops.txt   - DevOps & Automation', 'info');
+                printOutput('  cat programming.txt - Programming Languages', 'info');
+                printOutput('  cat fintech.txt  - Fintech Expertise', 'info');
+                printOutput('  cat leadership.txt - Leadership Skills', 'info');
+                printOutput('');
+                printOutput('🎯 Core Competencies:', 'warning');
+                printOutput('  ☁️  Cloud Architecture (AWS/GCP)        ████████████████████░ 95%', 'success');
+                printOutput('  🔄 DevOps & CI/CD                       ████████████████████░ 95%', 'success');
+                printOutput('  💰 Fintech Systems                      ████████████████████░ 95%', 'success');
+                printOutput('  👥 Team Leadership                      ████████████████████░ 95%', 'success');
+                printOutput('  🐍 Python & Django                      ██████████████████░░ 90%', 'success');
+                printOutput('  🔒 Security & Compliance                ██████████████████░░ 90%', 'success');
+                printOutput('');
+            },
+
+            timeline: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              CAREER TIMELINE                               ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                printOutput('2025 - Present  ┃ 🏆 Sr. Engineering Manager @ Paytm', 'success');
+                printOutput('                ┃    Leading Gold Division (15+ engineers)', 'info');
+                printOutput('                ┃    • 2x GMV growth', 'info');
+                printOutput('                ┃    • 500K+ daily transactions', 'info');
+                printOutput('                ┃', 'info');
+                printOutput('2022 - 2024     ┃ 🚀 Chief Technical Officer @ GetPlus', 'success');
+                printOutput('                ┃    Built fintech platform from scratch', 'info');
+                printOutput('                ┃    • $800K funding secured', 'info');
+                printOutput('                ┃    • $2M+ monthly transactions', 'info');
+                printOutput('                ┃    • Payment success: 75% → 92%', 'info');
+                printOutput('                ┃', 'info');
+                printOutput('2021 - 2022     ┃ 💼 Technical Consultant (Independent)', 'success');
+                printOutput('                ┃    DevOps & Cloud transformation', 'info');
+                printOutput('                ┃    • 40% deployment time reduction', 'info');
+                printOutput('                ┃', 'info');
+                printOutput('2018 - 2021     ┃ 💻 Sr. Software Engineer @ Patchus', 'success');
+                printOutput('                ┃    • Built CI/CD from scratch', 'info');
+                printOutput('                ┃    • Zero-downtime cloud migration', 'info');
+                printOutput('                ┃', 'info');
+                printOutput('2016 - 2018     ┃ 🎯 Product Manager @ Radiowalla', 'success');
+                printOutput('                ┃    • Video analytics with ML', 'info');
+                printOutput('                ┃    • 90%+ model accuracy', 'info');
+                printOutput('                ┃', 'info');
+                printOutput('2014 - 2016     ┃ 🌱 Software Developer @ NeuronMe', 'success');
+                printOutput('                ┃    Started the journey!', 'info');
+                printOutput('                ┃    • ML pipelines with TensorFlow', 'info');
+                printOutput('');
+                printOutput('For detailed experience, explore: cd experience/', 'warning');
+                printOutput('');
+
+                checkAchievement('timeline', 'Time Traveler', 'You explored my career journey!');
+            },
+
+            contact: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              CONTACT INFORMATION                           ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                printOutput('📧 Email:', 'warning');
+                printOutput('   maithani.aniket@gmail.com', 'success');
+                printOutput('');
+                printOutput('📱 Phone:', 'warning');
+                printOutput('   +91-9880063438', 'success');
+                printOutput('   +91-7310723674', 'success');
+                printOutput('');
+                printOutput('🌍 Location:', 'warning');
+                printOutput('   Gurgaon, Delhi NCR, India', 'success');
+                printOutput('');
+                printOutput('💼 Current Role:', 'warning');
+                printOutput('   Sr. Engineering Manager @ Paytm', 'success');
+                printOutput('   Leading Gold Division', 'success');
+                printOutput('');
+                printOutput('Type "social" for social media links!', 'info');
+                printOutput('');
+
+                checkAchievement('contact', 'Networker', "Let's connect!");
+            },
+
+            social: () => {
+                printOutput('');
+                printOutput('╔════════════════════════════════════════════════════════════╗', 'info');
+                printOutput('║              SOCIAL MEDIA & LINKS                          ║', 'info');
+                printOutput('╚════════════════════════════════════════════════════════════╝', 'info');
+                printOutput('');
+                printOutput('🔗 LinkedIn:', 'warning');
+                printOutput('   https://linkedin.com/in/aniketmaithani', 'info');
+                printOutput('');
+                printOutput('💻 Stack Overflow:', 'warning');
+                printOutput('   https://stackoverflow.com/users/aniketmaithani', 'info');
+                printOutput('');
+                printOutput('✍️  Blog (BerozgaarCoder):', 'warning');
+                printOutput('   https://berozgaarcoder.in', 'info');
+                printOutput('   "Code Ka Jugaad" - Technical insights & career stories', 'info');
+                printOutput('');
+                printOutput('📄 Publications:', 'warning');
+                printOutput('   Research: https://www.academia.edu/6751636/', 'info');
+                printOutput('   Book Review: Packt Publishing', 'info');
+                printOutput('');
+                printOutput('💼 GitHub:', 'warning');
+                printOutput('   Available on request', 'info');
+                printOutput('');
+            },
+
+            resume: () => {
+                printOutput('');
+                printOutput('📄 Downloading resume...', 'info');
+                simulateProgress('Download', () => {
+                    printOutput('');
+                    printOutput('✓ Resume downloaded successfully!', 'success');
+                    printOutput('');
+                    printOutput('Resume Formats Available:', 'warning');
+                    printOutput('  • PDF (DevOps Focus)', 'info');
+                    printOutput('  • PDF (Engineering Manager Focus)', 'info');
+                    printOutput('');
+                    printOutput('Contact me for the latest version:', 'info');
+                    printOutput('  maithani.aniket@gmail.com', 'success');
+                    printOutput('');
+                });
+            },
+
+            sudo: () => {
+                printOutput('');
+                printOutput('[sudo] password for guest: ', 'warning');
+                setTimeout(() => {
+                    printOutput('Sorry, guest is not in the sudoers file.', 'error');
+                    printOutput('This incident will be reported.', 'error');
+                    printOutput('');
+                    printOutput('Just kidding! But nice try 😄', 'success');
+                    printOutput('');
+                    printOutput('Fun fact: In my 13 years, I\'ve learned that the best', 'info');
+                    printOutput('sudo access comes from earning trust and demonstrating', 'info');
+                    printOutput('technical excellence, not from privilege escalation! 🚀', 'info');
+                    printOutput('');
+                    checkAchievement('sudo', 'Sudo Warrior', 'You tried to hack the system!');
+                }, 1000);
+            },
+
+            history: () => {
+                printOutput('');
+                printOutput('Command History:', 'warning');
+                printOutput('');
+                commandHistory.forEach((cmd, index) => {
+                    printOutput(`  ${(index + 1).toString().padStart(4)}  ${cmd}`, 'info');
+                });
+                printOutput('');
+            },
+
+            exit: () => {
+                printOutput('');
+                printOutput('Nice try! But you can\'t escape that easily! 😄', 'warning');
+                printOutput('');
+                printOutput('This terminal is your window into my 13-year journey.', 'info');
+                printOutput('Keep exploring! There are more hidden achievements to unlock.', 'success');
+                printOutput('');
+                printOutput('Try: "sudo rm -rf /" for a surprise! (JK, don\'t do that in real life)', 'warning');
+                printOutput('');
+            },
+
+            neofetch: () => {
+                printOutput('');
+                const neofetch = `
+         _,met$$$$$gg.          guest@aniket-portfolio
+      ,g$$$$$$$$$$$$$$$P.       ----------------------
+    ,g$$P"     """Y$$.".        OS: Portfolio Linux 13.0
+   ,$$P'              \`$$$.     Host: Fintech Cloud
+  ',$$P       ,ggs.     \`$$b:   Kernel: 5.15.0-fintech
+  \`d$$'     ,$P"'   .    $$$    Uptime: 13 years, 0 months
+   $$P      d$'     ,    $$P    Packages: 20+ skills
+   $$:      $$.   -    ,d$$'    Shell: bash 5.0.17
+   $$;      Y$b._   _,d$P'      Resolution: Excellence at Scale
+   Y$$.    \`.\`"Y$$$$P"'         DE: DevOps Environment
+   \`$$b      "-.__              WM: Team Leadership
+    \`Y$$                        Theme: Fintech-Dark
+     \`Y$$.                      Icons: AWS, GCP, K8s
+       \`$$b.                    Terminal: portfolio-term
+         \`Y$$b.                 CPU: 15+ Engineers
+            \`"Y$b._             Memory: 13 years experience
+                \`"""            Disk: $2M+ transactions/month
+`;
+                printOutput(neofetch, 'info');
+                checkAchievement('neofetch', 'System Info', 'You ran neofetch!');
+            },
+
+            joke: () => {
+                const jokes = [
+                    "Why do programmers prefer dark mode?\nBecause light attracts bugs! 🐛",
+                    "Why did the DevOps engineer go broke?\nBecause he lost his cache! 💰",
+                    "Why do Java developers wear glasses?\nBecause they can't C#! 👓",
+                    "How do you comfort a JavaScript bug?\nYou console it! 🎮",
+                    "Why did the database admin leave his wife?\nShe had one-to-many relationships! 💔"
+                ];
+                const joke = jokes[Math.floor(Math.random() * jokes.length)];
+                printOutput('');
+                printOutput(joke, 'success');
+                printOutput('');
+            }
+        };
+
+        // Helper functions
+        function resolveDir(path) {
+            const parts = path.replace('~/', '').split('/').filter(p => p);
+            let current = fileSystem['~'].contents;
+
+            for (const part of parts) {
+                if (current[part] && current[part].type === 'directory') {
+                    current = current[part].contents;
+                } else {
+                    return null;
+                }
+            }
+
+            return current;
+        }
+
+        function resolveFile(fileName) {
+            const parts = currentDir.replace('~/', '').split('/').filter(p => p);
+            let current = fileSystem['~'].contents;
+
+            for (const part of parts) {
+                if (current[part] && current[part].type === 'directory') {
+                    current = current[part].contents;
+                }
+            }
+
+            return current[fileName] || null;
+        }
+
+        function updatePrompt() {
+            prompt.textContent = `${currentUser}@aniket-portfolio:${currentDir}$`;
+        }
+
+        function simulateProgress(label, callback) {
+            printOutput('');
+            const progressLine = document.createElement('div');
+            progressLine.className = 'output-line';
+            progressLine.innerHTML = `<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>`;
+            terminal.appendChild(progressLine);
+
+            const fill = document.getElementById('progress-fill');
+            let width = 0;
+            const interval = setInterval(() => {
+                width += 10;
+                fill.style.width = width + '%';
+                if (width >= 100) {
+                    clearInterval(interval);
+                    if (callback) callback();
+                }
+            }, 100);
+        }
+
+        function checkAchievement(id, title, description) {
+            if (!achievementsUnlocked.has(id)) {
+                achievementsUnlocked.add(id);
+                showAchievement(title, description);
+            }
+        }
+
+        function showAchievement(title, text) {
+            const popup = document.getElementById('achievement');
+            document.getElementById('achievement-text').textContent = `${title} - ${text}`;
+            popup.classList.add('show');
+            setTimeout(() => {
+                popup.classList.remove('show');
+            }, 3000);
+        }
+
+        // Command input handling
+        commandInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const command = commandInput.value.trim();
+                if (command) {
+                    commandCount++;
+                    commandHistory.push(command);
+                    historyIndex = commandHistory.length;
+                    
+                    printPrompt(command);
+                    executeCommand(command);
+                    
+                    commandInput.value = '';
+
+                    // Achievement for command mastery
+                    if (commandCount >= 20) {
+                        checkAchievement('master', 'Command Master', 'You executed 20+ commands!');
+                    }
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    commandInput.value = commandHistory[historyIndex];
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    commandInput.value = commandHistory[historyIndex];
+                } else {
+                    historyIndex = commandHistory.length;
+                    commandInput.value = '';
+                }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                // TODO: Implement autocomplete
+            }
+        });
+
+        function executeCommand(input) {
+            const parts = input.toLowerCase().split(' ');
+            const command = parts[0];
+            const args = parts.slice(1);
+
+            if (commands[command]) {
+                commands[command](args);
+            } else if (command) {
+                printOutput(`Command not found: ${command}`, 'error');
+                printOutput('Type "help" for available commands', 'warning');
+            }
+
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Keep input focused
+        document.addEventListener('click', () => {
+            commandInput.focus();
+        });
+
+        // Konami code easter egg
+        let konamiCode = [];
+        const konamiSequence = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65];
+        
+        window.addEventListener('keydown', (e) => {
+            konamiCode.push(e.keyCode);
+            konamiCode.splice(-konamiSequence.length - 1, konamiCode.length - konamiSequence.length);
+            
+            if (konamiCode.join('').includes(konamiSequence.join(''))) {
+                printOutput('');
+                printOutput('🎮 KONAMI CODE ACTIVATED! 🎮', 'success');
+                printOutput('');
+                printOutput('You unlocked: SUPER ENGINEER MODE!', 'success');
+                printOutput('All achievements unlocked!', 'success');
+                printOutput('You found the ultimate easter egg!', 'success');
+                printOutput('');
+                checkAchievement('konami', '🎮 Konami Master', 'You found the legendary code!');
+            }
+        });
+    </script>
+</body>
+</html>
