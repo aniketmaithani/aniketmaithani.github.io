@@ -1,0 +1,2029 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Road Safety Command Center - India</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-elevated: #1a1a24;
+            --bg-hover: #22222e;
+            
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-pink: #ec4899;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-orange: #f97316;
+            
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --border: #1e293b;
+            --border-bright: #334155;
+            
+            --gradient-blue: linear-gradient(135deg, #3b82f6, #06b6d4);
+            --gradient-purple: linear-gradient(135deg, #8b5cf6, #ec4899);
+            --gradient-green: linear-gradient(135deg, #10b981, #06b6d4);
+            --gradient-amber: linear-gradient(135deg, #f59e0b, #f97316);
+            --gradient-red: linear-gradient(135deg, #ef4444, #f97316);
+        }
+
+        /* Light Mode Theme */
+        [data-theme="light"] {
+            --bg-dark: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-elevated: #f1f5f9;
+            --bg-hover: #e2e8f0;
+            
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            
+            --border: #e2e8f0;
+            --border-bright: #cbd5e1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-bright);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            padding: 24px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: var(--gradient-blue);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .logo-text {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .logo-text span {
+            color: var(--accent-cyan);
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            padding-left: 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.3s;
+            margin-bottom: 4px;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .nav-item i {
+            font-size: 1.1rem;
+            width: 24px;
+        }
+
+        .nav-item .badge {
+            margin-left: auto;
+            background: var(--accent-red);
+            color: white;
+            font-size: 0.65rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-purple);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+
+        /* Top Header */
+        .top-header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--accent-red);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-red);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-box input {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 16px 10px 42px;
+            color: var(--text-primary);
+            width: 280px;
+            font-size: 0.9rem;
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .header-btn {
+            width: 42px;
+            height: 42px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .header-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .header-btn .notification-dot {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-red);
+            border-radius: 50%;
+        }
+
+        .date-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-content {
+            padding: 24px 32px;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .stat-card.blue::before { background: var(--gradient-blue); }
+        .stat-card.green::before { background: var(--gradient-green); }
+        .stat-card.amber::before { background: var(--gradient-amber); }
+        .stat-card.red::before { background: var(--gradient-red); }
+        .stat-card.purple::before { background: var(--gradient-purple); }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-bright);
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .stat-card.blue .stat-icon { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+        .stat-card.green .stat-icon { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+        .stat-card.amber .stat-icon { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); }
+        .stat-card.red .stat-icon { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+        .stat-card.purple .stat-icon { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); }
+
+        .stat-trend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .stat-trend.up {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .stat-trend.down {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Main Grid Layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title i {
+            color: var(--accent-cyan);
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .card-action-btn {
+            padding: 6px 12px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .card-action-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .card-action-btn.active {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .card-body {
+            padding: 24px;
+        }
+
+        /* Map Container */
+        .map-container {
+            height: 500px;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background: var(--bg-elevated);
+        }
+
+        .map-legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(18, 18, 26, 0.95);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 1000;
+        }
+
+        .legend-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.pothole { background: var(--accent-red); }
+        .legend-dot.violation { background: var(--accent-amber); }
+        .legend-dot.accident { background: var(--accent-purple); }
+        .legend-dot.construction { background: var(--accent-blue); }
+
+        /* Live Feed */
+        .live-feed {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .feed-item {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 14px;
+            transition: background 0.3s;
+            cursor: pointer;
+        }
+
+        .feed-item:hover {
+            background: var(--bg-elevated);
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .feed-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .feed-icon.pothole { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+        .feed-icon.violation { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); }
+        .feed-icon.accident { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); }
+        .feed-icon.drowsy { background: rgba(236, 72, 153, 0.15); color: var(--accent-pink); }
+        .feed-icon.construction { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+
+        .feed-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .feed-title {
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .feed-title .severity {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .severity.high { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        .severity.medium { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .severity.low { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+
+        .feed-location {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .feed-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Bottom Grid */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        /* Charts */
+        .chart-container {
+            height: 280px;
+            position: relative;
+        }
+
+        /* City Stats Table */
+        .city-table {
+            width: 100%;
+        }
+
+        .city-table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .city-table td {
+            padding: 14px 16px;
+            font-size: 0.9rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .city-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .city-table tr:hover {
+            background: var(--bg-elevated);
+        }
+
+        .city-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .city-flag {
+            width: 28px;
+            height: 20px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+            width: 100px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        .progress-fill.high { background: var(--accent-red); }
+        .progress-fill.medium { background: var(--accent-amber); }
+        .progress-fill.low { background: var(--accent-green); }
+
+        /* Violation Types */
+        .violation-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .violation-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .violation-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            background: var(--bg-elevated);
+        }
+
+        .violation-info {
+            flex: 1;
+        }
+
+        .violation-name {
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .violation-bar {
+            height: 8px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .violation-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s ease;
+        }
+
+        .violation-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
+            min-width: 60px;
+            text-align: right;
+        }
+
+        /* Recent Alerts */
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px;
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
+        .alert-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .alert-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .alert-icon.critical {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .alert-icon.warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-amber);
+        }
+
+        .alert-icon.info {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .alert-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .alert-time {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .bottom-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Custom Leaflet Styles */
+        .leaflet-container {
+            background: var(--bg-elevated);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .custom-popup .leaflet-popup-content-wrapper {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+        }
+
+        .custom-popup .leaflet-popup-tip {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+        }
+
+        .popup-content {
+            padding: 8px;
+        }
+
+        .popup-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .popup-detail {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .popup-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .popup-badge.critical { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        .popup-badge.moderate { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .popup-badge.minor { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .counter {
+            display: inline-block;
+        }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            width: 42px;
+            height: 42px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            transform: rotate(180deg);
+        }
+
+        .theme-toggle i {
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">🛣️</div>
+            <div class="logo-text">Road<span>Safe</span> AI</div>
+        </div>
+
+        <nav class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <a class="nav-item active">
+                <i class="bi bi-grid-1x2-fill"></i>
+                <span>Dashboard</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-map-fill"></i>
+                <span>Live Map</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span>Incidents</span>
+                <span class="badge">24</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-camera-video-fill"></i>
+                <span>CCTV Feeds</span>
+            </a>
+        </nav>
+
+        <nav class="nav-section">
+            <div class="nav-section-title">Analytics</div>
+            <a class="nav-item">
+                <i class="bi bi-bar-chart-fill"></i>
+                <span>Reports</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-pin-map-fill"></i>
+                <span>Hotspots</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-graph-up-arrow"></i>
+                <span>Trends</span>
+            </a>
+        </nav>
+
+        <nav class="nav-section">
+            <div class="nav-section-title">Management</div>
+            <a class="nav-item">
+                <i class="bi bi-truck"></i>
+                <span>Fleet Tracking</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-people-fill"></i>
+                <span>Contractors</span>
+            </a>
+            <a class="nav-item">
+                <i class="bi bi-gear-fill"></i>
+                <span>Settings</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">AK</div>
+                <div class="user-details">
+                    <div class="user-name">Aniket Kumar</div>
+                    <div class="user-role">Admin • NMC</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header -->
+        <header class="top-header">
+            <div class="header-left">
+                <h1 class="page-title">Command Center</h1>
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <i class="bi bi-search"></i>
+                    <input type="text" placeholder="Search locations, incidents...">
+                </div>
+                <div class="theme-toggle" id="theme-toggle" title="Toggle Dark/Light Mode">
+                    <i class="bi bi-moon-stars-fill"></i>
+                </div>
+                <div class="header-btn">
+                    <i class="bi bi-bell-fill"></i>
+                    <div class="notification-dot"></div>
+                </div>
+                <div class="header-btn">
+                    <i class="bi bi-gear-fill"></i>
+                </div>
+                <div class="date-display">
+                    <i class="bi bi-calendar3"></i>
+                    <span id="current-date">29 Nov 2025</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard Content -->
+        <div class="dashboard-content">
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card blue fade-in">
+                    <div class="stat-header">
+                        <div class="stat-icon"><i class="bi bi-cone-striped"></i></div>
+                        <div class="stat-trend up"><i class="bi bi-arrow-up"></i> 12%</div>
+                    </div>
+                    <div class="stat-value counter" data-target="3247">0</div>
+                    <div class="stat-label">Potholes Detected Today</div>
+                </div>
+                <div class="stat-card amber fade-in" style="animation-delay: 0.1s">
+                    <div class="stat-header">
+                        <div class="stat-icon"><i class="bi bi-shield-exclamation"></i></div>
+                        <div class="stat-trend down"><i class="bi bi-arrow-down"></i> 8%</div>
+                    </div>
+                    <div class="stat-value counter" data-target="1876">0</div>
+                    <div class="stat-label">Traffic Violations</div>
+                </div>
+                <div class="stat-card green fade-in" style="animation-delay: 0.2s">
+                    <div class="stat-header">
+                        <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+                        <div class="stat-trend up"><i class="bi bi-arrow-up"></i> 24%</div>
+                    </div>
+                    <div class="stat-value counter" data-target="1124">0</div>
+                    <div class="stat-label">Issues Resolved</div>
+                </div>
+                <div class="stat-card red fade-in" style="animation-delay: 0.3s">
+                    <div class="stat-header">
+                        <div class="stat-icon"><i class="bi bi-exclamation-octagon-fill"></i></div>
+                        <div class="stat-trend down"><i class="bi bi-arrow-down"></i> 15%</div>
+                    </div>
+                    <div class="stat-value counter" data-target="34">0</div>
+                    <div class="stat-label">Critical Alerts</div>
+                </div>
+                <div class="stat-card purple fade-in" style="animation-delay: 0.4s">
+                    <div class="stat-header">
+                        <div class="stat-icon"><i class="bi bi-bicycle"></i></div>
+                        <div class="stat-trend up"><i class="bi bi-arrow-up"></i> 5%</div>
+                    </div>
+                    <div class="stat-value counter" data-target="18750">0</div>
+                    <div class="stat-label">Active Riders</div>
+                </div>
+            </div>
+
+            <!-- Main Grid: Map + Live Feed -->
+            <div class="main-grid">
+                <!-- Map Card -->
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-geo-alt-fill"></i>
+                            Real-Time Incident Map
+                        </div>
+                        <div class="card-actions">
+                            <button class="card-action-btn active">All</button>
+                            <button class="card-action-btn">Potholes</button>
+                            <button class="card-action-btn">Violations</button>
+                            <button class="card-action-btn">Accidents</button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div class="map-container">
+                            <div id="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-title">Incident Types</div>
+                                <div class="legend-item">
+                                    <div class="legend-dot pothole"></div>
+                                    <span>Pothole (Critical)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-dot violation"></div>
+                                    <span>Traffic Violation</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-dot accident"></div>
+                                    <span>Accident Zone</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-dot construction"></div>
+                                    <span>Under Construction</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Feed Card -->
+                <div class="card fade-in" style="animation-delay: 0.2s">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-broadcast"></i>
+                            Live Incident Feed
+                        </div>
+                        <div class="card-actions">
+                            <button class="card-action-btn active">Latest</button>
+                            <button class="card-action-btn">Critical</button>
+                        </div>
+                    </div>
+                    <div class="live-feed" id="live-feed">
+                        <!-- Feed items will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Grid - Charts -->
+            <div class="bottom-grid">
+                <!-- Hourly Incidents Chart -->
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-graph-up"></i>
+                            Hourly Incident Trends
+                        </div>
+                        <div class="card-actions">
+                            <button class="card-action-btn active">Today</button>
+                            <button class="card-action-btn">Week</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="hourlyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Violation Types Pie Chart -->
+                <div class="card fade-in" style="animation-delay: 0.1s">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-pie-chart-fill"></i>
+                            Violation Distribution
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="violationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- City Comparison Chart -->
+                <div class="card fade-in" style="animation-delay: 0.2s">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-bar-chart-fill"></i>
+                            City-wise Comparison
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="cityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Stats Grid -->
+            <div class="bottom-grid" style="margin-top: 24px;">
+                <!-- City Stats Table -->
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-building"></i>
+                            City-wise Statistics
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <table class="city-table">
+                            <thead>
+                                <tr>
+                                    <th>City</th>
+                                    <th>Potholes</th>
+                                    <th>Risk Level</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="city-stats">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Violation Types List -->
+                <div class="card fade-in" style="animation-delay: 0.1s">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-exclamation-diamond-fill"></i>
+                            Violation Breakdown
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="violation-list" id="violation-list">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Alerts -->
+                <div class="card fade-in" style="animation-delay: 0.2s">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i class="bi bi-bell-fill"></i>
+                            System Alerts
+                        </div>
+                    </div>
+                    <div class="card-body" id="alerts-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        // ==================== THEME TOGGLE ====================
+        
+        const themeToggle = document.getElementById('theme-toggle');
+        const html = document.documentElement;
+        
+        // Check for saved theme preference or default to 'dark'
+        const currentTheme = localStorage.getItem('theme') || 'dark';
+        html.setAttribute('data-theme', currentTheme);
+        updateThemeIcon(currentTheme);
+        
+        themeToggle.addEventListener('click', function() {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+        
+        function updateThemeIcon(theme) {
+            const icon = themeToggle.querySelector('i');
+            if (theme === 'dark') {
+                icon.className = 'bi bi-moon-stars-fill';
+            } else {
+                icon.className = 'bi bi-sun-fill';
+            }
+        }
+
+        // ==================== SAMPLE DATA - INDIAN CONTEXT ====================
+        
+        // Indian Cities Coordinates
+        const indianCities = {
+            nagpur: { lat: 21.1458, lng: 79.0882, name: "Nagpur" },
+            mumbai: { lat: 19.0760, lng: 72.8777, name: "Mumbai" },
+            delhi: { lat: 28.6139, lng: 77.2090, name: "Delhi" },
+            bangalore: { lat: 12.9716, lng: 77.5946, name: "Bengaluru" },
+            hyderabad: { lat: 17.3850, lng: 78.4867, name: "Hyderabad" },
+            chennai: { lat: 13.0827, lng: 80.2707, name: "Chennai" },
+            kolkata: { lat: 22.5726, lng: 88.3639, name: "Kolkata" },
+            pune: { lat: 18.5204, lng: 73.8567, name: "Pune" },
+            ahmedabad: { lat: 23.0225, lng: 72.5714, name: "Ahmedabad" },
+            jaipur: { lat: 26.9124, lng: 75.7873, name: "Jaipur" }
+        };
+
+        // Realistic Pothole Data - Indian Roads
+        const potholeData = [
+            { id: 1, lat: 19.0760, lng: 72.8777, location: "Western Express Highway, Andheri", severity: "critical", size: "Large (65cm)", detected: "Just now", confidence: 97 },
+            { id: 2, lat: 19.1176, lng: 72.9060, location: "LBS Marg, Ghatkopar", severity: "critical", size: "Large (58cm)", detected: "2 mins ago", confidence: 95 },
+            { id: 3, lat: 28.6139, lng: 77.2090, location: "Kashmere Gate, Delhi", severity: "critical", size: "Large (72cm)", detected: "3 mins ago", confidence: 98 },
+            { id: 4, lat: 28.5355, lng: 77.3910, location: "Noida-Greater Noida Expressway", severity: "moderate", size: "Medium (38cm)", detected: "5 mins ago", confidence: 92 },
+            { id: 5, lat: 12.9716, lng: 77.5946, location: "Hosur Road, Electronic City", severity: "critical", size: "Large (55cm)", detected: "4 mins ago", confidence: 94 },
+            { id: 6, lat: 12.9352, lng: 77.6245, location: "Outer Ring Road, Marathahalli", severity: "moderate", size: "Medium (42cm)", detected: "8 mins ago", confidence: 91 },
+            { id: 7, lat: 22.5726, lng: 88.3639, location: "EM Bypass, Kolkata", severity: "critical", size: "Large (68cm)", detected: "6 mins ago", confidence: 96 },
+            { id: 8, lat: 22.5958, lng: 88.4497, location: "VIP Road, Salt Lake", severity: "moderate", size: "Medium (35cm)", detected: "10 mins ago", confidence: 89 },
+            { id: 9, lat: 17.3850, lng: 78.4867, location: "Outer Ring Road, Gachibowli", severity: "critical", size: "Large (48cm)", detected: "7 mins ago", confidence: 93 },
+            { id: 10, lat: 17.4435, lng: 78.3772, location: "Mehdipatnam Junction", severity: "moderate", size: "Medium (32cm)", detected: "12 mins ago", confidence: 90 },
+            { id: 11, lat: 13.0827, lng: 80.2707, location: "Anna Salai, Chennai", severity: "critical", size: "Large (52cm)", detected: "9 mins ago", confidence: 94 },
+            { id: 12, lat: 18.5204, lng: 73.8567, location: "Pune-Mumbai Highway", severity: "moderate", size: "Medium (40cm)", detected: "15 mins ago", confidence: 88 },
+            { id: 13, lat: 21.1458, lng: 79.0882, location: "Wardha Road, Nagpur", severity: "critical", size: "Large (45cm)", detected: "11 mins ago", confidence: 92 },
+            { id: 14, lat: 23.0225, lng: 72.5714, location: "SG Highway, Ahmedabad", severity: "moderate", size: "Medium (36cm)", detected: "18 mins ago", confidence: 87 },
+            { id: 15, lat: 26.9124, lng: 75.7873, location: "JLN Marg, Jaipur", severity: "minor", size: "Small (22cm)", detected: "20 mins ago", confidence: 85 }
+        ];
+
+        // Realistic Violation Data - Common Indian Traffic Violations
+        const violationData = [
+            { id: 1, lat: 19.0760, lng: 72.8777, type: "No Helmet", location: "Link Road, Andheri West", vehicle: "MH-02-BK-4521", time: "Just now", fine: 1000 },
+            { id: 2, lat: 19.0650, lng: 72.8400, type: "Triple Riding", location: "Bandra-Kurla Complex", vehicle: "MH-01-CD-8934", time: "1 min ago", fine: 1500 },
+            { id: 3, lat: 28.6139, lng: 77.2090, type: "Red Light Jump", location: "Connaught Place", vehicle: "DL-1C-AB-1234", time: "2 mins ago", fine: 5000 },
+            { id: 4, lat: 28.5355, lng: 77.3910, type: "Wrong Side Driving", location: "Sector 18, Noida", vehicle: "UP-16-EF-5678", time: "3 mins ago", fine: 5000 },
+            { id: 5, lat: 12.9716, lng: 77.5946, type: "Mobile While Driving", location: "MG Road, Bengaluru", vehicle: "KA-01-MH-9012", time: "4 mins ago", fine: 5000 },
+            { id: 6, lat: 12.9352, lng: 77.6245, type: "No Seatbelt", location: "Koramangala 5th Block", vehicle: "KA-05-NP-3456", time: "5 mins ago", fine: 1000 },
+            { id: 7, lat: 22.5726, lng: 88.3639, type: "Overspeeding", location: "EM Bypass, Kolkata", vehicle: "WB-06-QR-7890", time: "6 mins ago", fine: 2000 },
+            { id: 8, lat: 17.3850, lng: 78.4867, type: "No Helmet", location: "Hitech City Road", vehicle: "TS-09-ST-2345", time: "7 mins ago", fine: 1000 },
+            { id: 9, lat: 13.0827, lng: 80.2707, type: "Triple Riding", location: "Mount Road, Chennai", vehicle: "TN-01-UV-6789", time: "8 mins ago", fine: 1500 },
+            { id: 10, lat: 18.5204, lng: 73.8567, type: "Red Light Jump", location: "FC Road, Pune", vehicle: "MH-12-WX-4567", time: "10 mins ago", fine: 5000 },
+            { id: 11, lat: 21.1458, lng: 79.0882, type: "Wrong Way Driving", location: "Sitabuldi, Nagpur", vehicle: "MH-31-YZ-8901", time: "12 mins ago", fine: 5000 },
+            { id: 12, lat: 23.0225, lng: 72.5714, type: "Overspeeding", location: "Sarkhej-Gandhinagar Highway", vehicle: "GJ-01-AB-2345", time: "15 mins ago", fine: 2000 }
+        ];
+
+        // Realistic Accident Data - Indian Context
+        const accidentData = [
+            { id: 1, lat: 19.0900, lng: 72.8700, location: "Mumbai-Pune Expressway, Panvel", severity: "major", casualties: 3, time: "18 mins ago", status: "Ambulance En Route" },
+            { id: 2, lat: 28.6500, lng: 77.2300, location: "NH-44, Outer Ring Road Delhi", severity: "critical", casualties: 2, time: "25 mins ago", status: "Emergency Response Active" },
+            { id: 3, lat: 12.9500, lng: 77.6200, location: "Hosur Road Flyover, Bengaluru", severity: "moderate", casualties: 1, time: "35 mins ago", status: "Traffic Diverted" },
+            { id: 4, lat: 22.5800, lng: 88.4000, location: "VIP Road Junction, Kolkata", severity: "minor", casualties: 0, time: "45 mins ago", status: "Cleared" },
+            { id: 5, lat: 17.4200, lng: 78.4500, location: "ORR Exit 12, Hyderabad", severity: "moderate", casualties: 1, time: "52 mins ago", status: "Under Investigation" },
+            { id: 6, lat: 13.0500, lng: 80.2500, location: "ECR, Chennai", severity: "major", casualties: 2, time: "1 hour ago", status: "Police Investigation" }
+        ];
+
+        // Realistic Construction Zone Data - Major Indian Infrastructure Projects
+        const constructionData = [
+            { id: 1, lat: 19.0900, lng: 72.8500, location: "Mumbai Metro Line 3 (Colaba-SEEPZ)", contractor: "Mumbai Metro Rail Corporation", dueDate: "March 2026", progress: 78 },
+            { id: 2, lat: 28.6300, lng: 77.1800, location: "Delhi-Meerut RRTS Corridor", contractor: "NCRTC", dueDate: "June 2025", progress: 85 },
+            { id: 3, lat: 12.9800, lng: 77.6400, location: "Bengaluru Peripheral Ring Road", contractor: "NHAI-Karnataka", dueDate: "December 2026", progress: 42 },
+            { id: 4, lat: 22.5700, lng: 88.3700, location: "Kolkata East-West Metro", contractor: "Kolkata Metro Rail Corporation", dueDate: "August 2025", progress: 92 },
+            { id: 5, lat: 17.4400, lng: 78.3800, location: "Hyderabad ORR Expansion Phase-2", contractor: "HMDA", dueDate: "October 2025", progress: 68 },
+            { id: 6, lat: 18.5300, lng: 73.8700, location: "Pune Metro Line 2", contractor: "MahaMetro", dueDate: "February 2026", progress: 55 },
+            { id: 7, lat: 21.1250, lng: 79.0650, location: "Nagpur Metro Phase 2", contractor: "MahaMetro Nagpur", dueDate: "September 2025", progress: 72 },
+            { id: 8, lat: 23.0300, lng: 72.5800, location: "Ahmedabad-Dholera Expressway", contractor: "NHAI Gujarat", dueDate: "November 2025", progress: 65 }
+        ];
+
+        // City Statistics - More realistic data
+        const cityStats = [
+            { city: "Mumbai", emoji: "🌊", potholes: 2847, risk: 89, status: "Critical" },
+            { city: "Delhi", emoji: "🏛️", potholes: 2456, risk: 85, status: "Critical" },
+            { city: "Bengaluru", emoji: "💻", potholes: 1923, risk: 76, status: "High Alert" },
+            { city: "Kolkata", emoji: "🏛️", potholes: 1654, risk: 72, status: "High Alert" },
+            { city: "Hyderabad", emoji: "🏰", potholes: 1432, risk: 68, status: "Moderate" },
+            { city: "Pune", emoji: "📚", potholes: 1287, risk: 65, status: "Moderate" },
+            { city: "Nagpur", emoji: "🍊", potholes: 1124, risk: 62, status: "Moderate" },
+            { city: "Chennai", emoji: "🏖️", potholes: 987, risk: 58, status: "Stable" }
+        ];
+
+        // Violation Types Statistics - More realistic Indian data
+        const violationTypes = [
+            { name: "No Helmet", count: 8945, percentage: 38, color: "#ef4444", icon: "⛑️" },
+            { name: "Triple Riding", count: 4523, percentage: 19, color: "#f59e0b", icon: "🛵" },
+            { name: "Red Light Jump", count: 3876, percentage: 16, color: "#8b5cf6", icon: "🚦" },
+            { name: "Mobile While Driving", count: 2987, percentage: 13, color: "#ec4899", icon: "📱" },
+            { name: "No Seatbelt", count: 2134, percentage: 9, color: "#06b6d4", icon: "🚗" },
+            { name: "Overspeeding", count: 1211, percentage: 5, color: "#10b981", icon: "⚡" }
+        ];
+
+        // Hourly incident data for chart
+        const hourlyData = {
+            labels: ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'],
+            potholes: [45, 32, 89, 234, 312, 287, 398, 156],
+            violations: [23, 18, 67, 189, 245, 298, 456, 234],
+            accidents: [2, 1, 5, 12, 18, 15, 23, 8]
+        };
+
+        // Realistic System Alerts - Indian Road Safety Context
+        const systemAlerts = [
+            { type: "critical", icon: "bi-exclamation-triangle-fill", title: "Monsoon Damage Alert", desc: "72 new potholes detected on Mumbai-Pune Expressway after heavy rainfall", time: "Just now" },
+            { type: "critical", icon: "bi-shield-exclamation", title: "Accident Blackspot Identified", desc: "NH-44 Delhi-Agra stretch shows 15% increase in accidents this month", time: "5 mins ago" },
+            { type: "warning", icon: "bi-cpu-fill", title: "AI Processing Load High", desc: "System processing 2.4M+ vehicle detections per hour across 8 cities", time: "8 mins ago" },
+            { type: "info", icon: "bi-check-circle-fill", title: "Road Repair Completed", desc: "BMC completed pothole filling on Western Express Highway - 45 locations", time: "12 mins ago" },
+            { type: "warning", icon: "bi-broadcast", title: "New Fleet Integration", desc: "Zomato delivery fleet (12,000+ vehicles) connected to monitoring system", time: "25 mins ago" },
+            { type: "critical", icon: "bi-exclamation-octagon-fill", title: "High Violation Zone", desc: "Helmet violations up 34% in Bengaluru's Outer Ring Road area", time: "35 mins ago" },
+            { type: "info", icon: "bi-graph-up-arrow", title: "Daily Analytics Ready", desc: "November 29, 2025 - 3,247 potholes, 1,876 violations processed", time: "1 hour ago" },
+            { type: "warning", icon: "bi-cone-striped", title: "Construction Delay Alert", desc: "Delhi Metro Phase 4 work causing traffic congestion on Ring Road", time: "1.5 hours ago" }
+        ];
+
+        // Realistic Live Feed Items - Indian Road Incidents
+        const liveFeedItems = [
+            { type: "pothole", icon: "bi-cone-striped", title: "Critical Pothole - 65cm", severity: "high", location: "Western Express Highway, Andheri", time: "Just now" },
+            { type: "violation", icon: "bi-shield-exclamation", title: "No Helmet Violation", severity: "medium", location: "Link Road, Andheri West", time: "1 min ago" },
+            { type: "accident", icon: "bi-exclamation-octagon-fill", title: "Major Accident - 3 Casualties", severity: "high", location: "Mumbai-Pune Expressway, Panvel", time: "2 mins ago" },
+            { type: "pothole", icon: "bi-cone-striped", title: "Large Pothole - 72cm", severity: "high", location: "Kashmere Gate, Delhi", time: "3 mins ago" },
+            { type: "violation", icon: "bi-shield-exclamation", title: "Triple Riding Detected", severity: "medium", location: "Bandra-Kurla Complex", time: "4 mins ago" },
+            { type: "drowsy", icon: "bi-eye-slash-fill", title: "Drowsy Driver Alert", severity: "high", location: "NH-44, Delhi-Agra Highway", time: "5 mins ago" },
+            { type: "pothole", icon: "bi-cone-striped", title: "Pothole Cluster Found", severity: "high", location: "EM Bypass, Kolkata", time: "6 mins ago" },
+            { type: "violation", icon: "bi-shield-exclamation", title: "Red Light Jump", severity: "high", location: "Connaught Place, Delhi", time: "7 mins ago" },
+            { type: "construction", icon: "bi-tools", title: "Metro Construction Update", severity: "low", location: "Mumbai Metro Line 3 - Colaba", time: "10 mins ago" },
+            { type: "violation", icon: "bi-shield-exclamation", title: "Mobile While Driving", severity: "medium", location: "MG Road, Bengaluru", time: "12 mins ago" },
+            { type: "pothole", icon: "bi-cone-striped", title: "Road Damage Repaired ✓", severity: "low", location: "Outer Ring Road, Marathahalli", time: "15 mins ago" },
+            { type: "accident", icon: "bi-exclamation-octagon-fill", title: "Minor Collision", severity: "medium", location: "VIP Road Junction, Kolkata", time: "18 mins ago" }
+        ];
+
+        // ==================== INITIALIZATION ====================
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            initCharts();
+            populateLiveFeed();
+            populateCityStats();
+            populateViolationList();
+            populateAlerts();
+            animateCounters();
+            updateDateTime();
+            setInterval(addNewFeedItem, 15000); // Add new item every 15 seconds
+        });
+
+        // ==================== CHARTS INITIALIZATION ====================
+        
+        function initCharts() {
+            // Get theme colors
+            const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+            const textColor = isDark ? '#94a3b8' : '#475569';
+            const gridColor = isDark ? '#1e293b' : '#e2e8f0';
+
+            // Chart.js default config
+            Chart.defaults.color = textColor;
+            Chart.defaults.borderColor = gridColor;
+            Chart.defaults.font.family = "'Inter', sans-serif";
+
+            // Hourly Incidents Line Chart
+            const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+            new Chart(hourlyCtx, {
+                type: 'line',
+                data: {
+                    labels: hourlyData.labels,
+                    datasets: [
+                        {
+                            label: 'Potholes',
+                            data: hourlyData.potholes,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Violations',
+                            data: hourlyData.violations,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Accidents',
+                            data: hourlyData.accidents,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: isDark ? '#1a1a24' : '#ffffff',
+                            titleColor: textColor,
+                            bodyColor: textColor,
+                            borderColor: gridColor,
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: gridColor
+                            },
+                            ticks: {
+                                color: textColor
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: gridColor
+                            },
+                            ticks: {
+                                color: textColor
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+
+            // Violation Types Doughnut Chart
+            const violationCtx = document.getElementById('violationChart').getContext('2d');
+            new Chart(violationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: violationTypes.map(v => v.name),
+                    datasets: [{
+                        data: violationTypes.map(v => v.count),
+                        backgroundColor: violationTypes.map(v => v.color),
+                        borderWidth: 2,
+                        borderColor: isDark ? '#12121a' : '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'right',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 12,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: isDark ? '#1a1a24' : '#ffffff',
+                            titleColor: textColor,
+                            bodyColor: textColor,
+                            borderColor: gridColor,
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // City Comparison Bar Chart
+            const cityCtx = document.getElementById('cityChart').getContext('2d');
+            new Chart(cityCtx, {
+                type: 'bar',
+                data: {
+                    labels: cityStats.map(c => c.city),
+                    datasets: [{
+                        label: 'Potholes Detected',
+                        data: cityStats.map(c => c.potholes),
+                        backgroundColor: cityStats.map(c => {
+                            if (c.risk >= 80) return 'rgba(239, 68, 68, 0.8)';
+                            if (c.risk >= 65) return 'rgba(245, 158, 11, 0.8)';
+                            return 'rgba(16, 185, 129, 0.8)';
+                        }),
+                        borderColor: cityStats.map(c => {
+                            if (c.risk >= 80) return '#ef4444';
+                            if (c.risk >= 65) return '#f59e0b';
+                            return '#10b981';
+                        }),
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: isDark ? '#1a1a24' : '#ffffff',
+                            titleColor: textColor,
+                            bodyColor: textColor,
+                            borderColor: gridColor,
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const city = cityStats[context.dataIndex];
+                                    return [
+                                        `Potholes: ${context.parsed.y.toLocaleString()}`,
+                                        `Risk Level: ${city.risk}%`,
+                                        `Status: ${city.status}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: gridColor
+                            },
+                            ticks: {
+                                color: textColor,
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: textColor
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==================== MAP INITIALIZATION ====================
+        
+        function initMap() {
+            // Initialize map centered on India
+            const map = L.map('map', {
+                zoomControl: false
+            }).setView([20.5937, 78.9629], 5);
+
+            // Add zoom control to top-right
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Dark theme tile layer
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Custom icons
+            const potholeIconCritical = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #ef4444; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 10px rgba(239,68,68,0.5); display: flex; align-items: center; justify-content: center;"><span style="font-size: 12px;">🕳️</span></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            const potholeIconModerate = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #f59e0b; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 8px rgba(245,158,11,0.5);"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+
+            const potholeIconMinor = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 6px rgba(16,185,129,0.5);"></div>',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
+            const violationIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #f59e0b; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 0 8px rgba(245,158,11,0.5); display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px;">⚠️</span></div>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
+            });
+
+            const accidentIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #8b5cf6; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 12px rgba(139,92,246,0.6); display: flex; align-items: center; justify-content: center;"><span style="font-size: 13px;">🚨</span></div>',
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
+            });
+
+            const constructionIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #3b82f6; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 0 8px rgba(59,130,246,0.5); display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px;">🚧</span></div>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
+            });
+
+            // Add pothole markers
+            potholeData.forEach(pothole => {
+                let icon;
+                let badgeClass;
+                if (pothole.severity === 'critical') {
+                    icon = potholeIconCritical;
+                    badgeClass = 'critical';
+                } else if (pothole.severity === 'moderate') {
+                    icon = potholeIconModerate;
+                    badgeClass = 'moderate';
+                } else {
+                    icon = potholeIconMinor;
+                    badgeClass = 'minor';
+                }
+
+                const marker = L.marker([pothole.lat, pothole.lng], { icon: icon }).addTo(map);
+                marker.bindPopup(`
+                    <div class="popup-content">
+                        <div class="popup-title">
+                            🕳️ Pothole Detected
+                            <span class="popup-badge ${badgeClass}">${pothole.severity.toUpperCase()}</span>
+                        </div>
+                        <div class="popup-detail"><strong>Location:</strong> ${pothole.location}</div>
+                        <div class="popup-detail"><strong>Size:</strong> ${pothole.size}</div>
+                        <div class="popup-detail"><strong>Confidence:</strong> ${pothole.confidence}%</div>
+                        <div class="popup-detail"><strong>Detected:</strong> ${pothole.detected}</div>
+                    </div>
+                `, { className: 'custom-popup' });
+            });
+
+            // Add violation markers
+            violationData.forEach(violation => {
+                const marker = L.marker([violation.lat, violation.lng], { icon: violationIcon }).addTo(map);
+                marker.bindPopup(`
+                    <div class="popup-content">
+                        <div class="popup-title">
+                            ⚠️ ${violation.type}
+                            <span class="popup-badge moderate">VIOLATION</span>
+                        </div>
+                        <div class="popup-detail"><strong>Location:</strong> ${violation.location}</div>
+                        <div class="popup-detail"><strong>Vehicle:</strong> ${violation.vehicle}</div>
+                        <div class="popup-detail"><strong>Fine:</strong> ₹${violation.fine.toLocaleString()}</div>
+                        <div class="popup-detail"><strong>Time:</strong> ${violation.time}</div>
+                    </div>
+                `, { className: 'custom-popup' });
+            });
+
+            // Add accident markers
+            accidentData.forEach(accident => {
+                const marker = L.marker([accident.lat, accident.lng], { icon: accidentIcon }).addTo(map);
+                marker.bindPopup(`
+                    <div class="popup-content">
+                        <div class="popup-title">
+                            🚨 Accident Zone
+                            <span class="popup-badge critical">${accident.severity.toUpperCase()}</span>
+                        </div>
+                        <div class="popup-detail"><strong>Location:</strong> ${accident.location}</div>
+                        <div class="popup-detail"><strong>Casualties:</strong> ${accident.casualties}</div>
+                        <div class="popup-detail"><strong>Status:</strong> ${accident.status}</div>
+                        <div class="popup-detail"><strong>Reported:</strong> ${accident.time}</div>
+                    </div>
+                `, { className: 'custom-popup' });
+            });
+
+            // Add construction markers
+            constructionData.forEach(construction => {
+                const marker = L.marker([construction.lat, construction.lng], { icon: constructionIcon }).addTo(map);
+                marker.bindPopup(`
+                    <div class="popup-content">
+                        <div class="popup-title">
+                            🚧 Construction Zone
+                            <span class="popup-badge moderate">ACTIVE</span>
+                        </div>
+                        <div class="popup-detail"><strong>Project:</strong> ${construction.location}</div>
+                        <div class="popup-detail"><strong>Contractor:</strong> ${construction.contractor}</div>
+                        <div class="popup-detail"><strong>Progress:</strong> ${construction.progress}%</div>
+                        <div class="popup-detail"><strong>Due:</strong> ${construction.dueDate}</div>
+                    </div>
+                `, { className: 'custom-popup' });
+            });
+
+            // Add city markers
+            Object.values(indianCities).forEach(city => {
+                L.circleMarker([city.lat, city.lng], {
+                    radius: 8,
+                    fillColor: '#06b6d4',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0.6
+                }).addTo(map).bindTooltip(city.name, { permanent: false, direction: 'top' });
+            });
+        }
+
+        // ==================== POPULATE FUNCTIONS ====================
+
+        function populateLiveFeed() {
+            const feedContainer = document.getElementById('live-feed');
+            feedContainer.innerHTML = liveFeedItems.map(item => `
+                <div class="feed-item">
+                    <div class="feed-icon ${item.type}">
+                        <i class="bi ${item.icon}"></i>
+                    </div>
+                    <div class="feed-content">
+                        <div class="feed-title">
+                            ${item.title}
+                            <span class="severity ${item.severity}">${item.severity.toUpperCase()}</span>
+                        </div>
+                        <div class="feed-location">
+                            <i class="bi bi-geo-alt"></i>
+                            ${item.location}
+                        </div>
+                        <div class="feed-time">
+                            <i class="bi bi-clock"></i>
+                            ${item.time}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function populateCityStats() {
+            const tableBody = document.getElementById('city-stats');
+            tableBody.innerHTML = cityStats.map(city => {
+                let riskClass = city.risk >= 70 ? 'high' : city.risk >= 50 ? 'medium' : 'low';
+                let statusColor = city.status === 'Critical' ? '#ef4444' : 
+                                  city.status === 'High Alert' ? '#f59e0b' : 
+                                  city.status === 'Moderate' ? '#f59e0b' : '#10b981';
+                return `
+                    <tr>
+                        <td>
+                            <div class="city-name">
+                                <div class="city-flag">${city.emoji}</div>
+                                ${city.city}
+                            </div>
+                        </td>
+                        <td style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">${city.potholes.toLocaleString()}</td>
+                        <td>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${riskClass}" style="width: ${city.risk}%"></div>
+                            </div>
+                        </td>
+                        <td style="color: ${statusColor}; font-weight: 500;">${city.status}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function populateViolationList() {
+            const container = document.getElementById('violation-list');
+            container.innerHTML = violationTypes.map(v => `
+                <div class="violation-item">
+                    <div class="violation-icon">${v.icon}</div>
+                    <div class="violation-info">
+                        <div class="violation-name">${v.name}</div>
+                        <div class="violation-bar">
+                            <div class="violation-fill" style="width: ${v.percentage}%; background: ${v.color};"></div>
+                        </div>
+                    </div>
+                    <div class="violation-count" style="color: ${v.color};">${v.count.toLocaleString()}</div>
+                </div>
+            `).join('');
+        }
+
+        function populateAlerts() {
+            const container = document.getElementById('alerts-container');
+            container.innerHTML = systemAlerts.map(alert => `
+                <div class="alert-item">
+                    <div class="alert-icon ${alert.type}">
+                        <i class="bi ${alert.icon}"></i>
+                    </div>
+                    <div class="alert-content">
+                        <div class="alert-title">${alert.title}</div>
+                        <div class="alert-desc">${alert.desc}</div>
+                    </div>
+                    <div class="alert-time">${alert.time}</div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== ANIMATIONS & UPDATES ====================
+
+        function animateCounters() {
+            const counters = document.querySelectorAll('.counter');
+            counters.forEach(counter => {
+                const target = parseInt(counter.getAttribute('data-target'));
+                const duration = 2000;
+                const step = target / (duration / 16);
+                let current = 0;
+
+                const updateCounter = () => {
+                    current += step;
+                    if (current < target) {
+                        counter.textContent = Math.floor(current).toLocaleString();
+                        requestAnimationFrame(updateCounter);
+                    } else {
+                        counter.textContent = target.toLocaleString();
+                    }
+                };
+                updateCounter();
+            });
+        }
+
+        function updateDateTime() {
+            const now = new Date();
+            const options = { day: 'numeric', month: 'short', year: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-IN', options);
+        }
+
+        // Add new feed item periodically
+        function addNewFeedItem() {
+            const types = ['pothole', 'violation', 'drowsy'];
+            const locations = [
+                'MG Road, Bengaluru', 'Andheri West, Mumbai', 'Connaught Place, Delhi',
+                'Banjara Hills, Hyderabad', 'FC Road, Pune', 'Ring Road, Nagpur'
+            ];
+            const titles = {
+                pothole: ['New Pothole Detected', 'Critical Road Damage', 'Surface Crack Found'],
+                violation: ['Helmet Violation', 'Overspeeding Detected', 'Wrong Lane Driving'],
+                drowsy: ['Driver Fatigue Alert', 'Drowsiness Warning', 'Attention Required']
+            };
+            const severities = ['high', 'medium', 'low'];
+
+            const type = types[Math.floor(Math.random() * types.length)];
+            const location = locations[Math.floor(Math.random() * locations.length)];
+            const title = titles[type][Math.floor(Math.random() * titles[type].length)];
+            const severity = severities[Math.floor(Math.random() * severities.length)];
+
+            const icons = {
+                pothole: 'bi-cone-striped',
+                violation: 'bi-shield-exclamation',
+                drowsy: 'bi-eye-slash-fill'
+            };
+
+            const newItem = {
+                type,
+                icon: icons[type],
+                title,
+                severity,
+                location,
+                time: 'Just now'
+            };
+
+            // Add to beginning of feed
+            const feedContainer = document.getElementById('live-feed');
+            const newElement = document.createElement('div');
+            newElement.className = 'feed-item fade-in';
+            newElement.innerHTML = `
+                <div class="feed-icon ${newItem.type}">
+                    <i class="bi ${newItem.icon}"></i>
+                </div>
+                <div class="feed-content">
+                    <div class="feed-title">
+                        ${newItem.title}
+                        <span class="severity ${newItem.severity}">${newItem.severity.toUpperCase()}</span>
+                    </div>
+                    <div class="feed-location">
+                        <i class="bi bi-geo-alt"></i>
+                        ${newItem.location}
+                    </div>
+                    <div class="feed-time">
+                        <i class="bi bi-clock"></i>
+                        ${newItem.time}
+                    </div>
+                </div>
+            `;
+
+            feedContainer.insertBefore(newElement, feedContainer.firstChild);
+
+            // Remove last item if more than 12
+            if (feedContainer.children.length > 12) {
+                feedContainer.removeChild(feedContainer.lastChild);
+            }
+
+            // Update counter
+            updateIncidentCounter();
+        }
+
+        function updateIncidentCounter() {
+            const counters = document.querySelectorAll('.stat-card.blue .stat-value');
+            if (counters.length > 0) {
+                const current = parseInt(counters[0].textContent.replace(/,/g, ''));
+                counters[0].textContent = (current + 1).toLocaleString();
+            }
+        }
+    </script>
+</body>
+</html>
