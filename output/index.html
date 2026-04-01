@@ -395,10 +395,20 @@ footer a:hover { color: var(--text); }
 </section>
 <div class="filter-bar">
   <span class="filter-label">Browse ·</span>
-  <a class="filter-tag" href="tags.html#celery">celery</a><a class="filter-tag" href="tags.html#django">django</a><a class="filter-tag" href="tags.html#fintech">fintech</a><a class="filter-tag" href="tags.html#payments">payments</a><a class="filter-tag" href="tags.html#python">python</a><a class="filter-tag" href="tags.html#razorpay">razorpay</a><a class="filter-tag" href="tags.html#security">security</a><a class="filter-tag" href="tags.html#stripe">stripe</a>
+  <a class="filter-tag" href="tags.html#aws">aws</a><a class="filter-tag" href="tags.html#celery">celery</a><a class="filter-tag" href="tags.html#cryptography">cryptography</a><a class="filter-tag" href="tags.html#django">django</a><a class="filter-tag" href="tags.html#fintech">fintech</a><a class="filter-tag" href="tags.html#hsm">hsm</a><a class="filter-tag" href="tags.html#payments">payments</a><a class="filter-tag" href="tags.html#pkcs11">pkcs11</a><a class="filter-tag" href="tags.html#python">python</a><a class="filter-tag" href="tags.html#razorpay">razorpay</a><a class="filter-tag" href="tags.html#security">security</a><a class="filter-tag" href="tags.html#stripe">stripe</a>
 </div>
 <section class="posts-section">
   <div class="posts-grid">
+<a class="post-card" href="posts/cloudhsm-zk-exposure.html">
+  <div class="card-tags"><span class="card-tag">aws</span><span class="card-tag">security</span><span class="card-tag">cryptography</span></div>
+  <h2 class="card-title">CloudHSM Zero Key Exposure: Proving Your Encryption Keys Never Touch RAM</h2>
+  <p class="card-desc">How I built a proof-of-concept using AWS CloudHSM and PKCS#11 to demonstrate AES-256 encryption where the key never exists in application memory, verified with a live forensic scan of the Flask process.</p>
+  <div class="card-meta">
+    <span>February 27, 2026</span>
+    <span class="dot"></span>
+    <span>12 min read</span>
+  </div>
+</a>
 <a class="post-card" href="posts/implementing-payment-gateway-webhook.html">
   <div class="card-tags"><span class="card-tag">django</span><span class="card-tag">payments</span><span class="card-tag">razorpay</span></div>
   <h2 class="card-title">Django Payment Gateways: Webhooks, Idempotency, and Async Recon Done Right</h2>

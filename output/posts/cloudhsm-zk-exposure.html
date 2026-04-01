@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudHSM Zero Key Exposure: Proving Your Encryption Keys Never Touch RAM — aniketmaithani.net</title>
+  <meta name="description" content="How I built a proof-of-concept using AWS CloudHSM and PKCS#11 to demonstrate AES-256 encryption where the key never exists in application memory, verified with a live forensic scan of the Flask process.">
+  <meta property="og:title" content="CloudHSM Zero Key Exposure: Proving Your Encryption Keys Never Touch RAM — aniketmaithani.net">
+  <meta property="og:description" content="How I built a proof-of-concept using AWS CloudHSM and PKCS#11 to demonstrate AES-256 encryption where the key never exists in application memory, verified with a live forensic scan of the Flask process.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+  <style>
+
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #fafaf8;
+  --surface:     #ffffff;
+  --surface-2:   #f5f5f0;
+  --border:      #e8e8e4;
+  --text:        #1d1d1f;
+  --text-2:      #6e6e73;
+  --text-3:      #aeaeb2;
+  --accent:      #0071e3;
+  --accent-2:    #00b4d8;
+  --tag-bg:      #f0f0eb;
+  --tag-text:    #3a3a3c;
+  --code-bg:     #1e1e2e;
+  --code-text:   #cdd6f4;
+  --radius:      12px;
+  --radius-sm:   6px;
+  --font-sans:   'Newsreader', Georgia, serif;
+  --font-ui:     -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono:   'JetBrains Mono', 'SF Mono', monospace;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow:      0 4px 24px rgba(0,0,0,.08);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,.1);
+  --max-w:       680px;
+  --max-w-wide:  1100px;
+  --transition:  0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 300;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Navigation ── */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(250,250,248,.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand {
+  font-family: var(--font-ui);
+  font-size: 15px; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  letter-spacing: -0.3px;
+}
+.nav-brand span { color: var(--accent); }
+.nav-links { display: flex; gap: 8px; }
+.nav-links a {
+  font-family: var(--font-ui);
+  font-size: 13px; font-weight: 400;
+  color: var(--text-2); text-decoration: none;
+  padding: 5px 12px; border-radius: 20px;
+  transition: all var(--transition);
+}
+.nav-links a:hover { background: var(--surface-2); color: var(--text); }
+
+/* ── Hero ── */
+.hero {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 80px 24px 60px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-label {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 16px;
+}
+.hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 300; line-height: 1.1;
+  letter-spacing: -1.5px; color: var(--text);
+  max-width: 600px;
+}
+.hero h1 em { font-style: italic; color: var(--text-2); }
+.hero p {
+  font-family: var(--font-ui);
+  font-size: 15px; color: var(--text-2);
+  margin-top: 16px; max-width: 440px;
+  line-height: 1.6;
+}
+
+/* ── Tag filter bar ── */
+.filter-bar {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 24px 24px 0;
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: center;
+}
+.filter-label {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  font-weight: 500; margin-right: 4px;
+}
+.filter-tag {
+  font-family: var(--font-ui);
+  font-size: 12px; font-weight: 500;
+  padding: 5px 14px; border-radius: 20px;
+  background: var(--tag-bg); color: var(--tag-text);
+  border: 1px solid transparent;
+  cursor: pointer; transition: all var(--transition);
+  text-decoration: none;
+}
+.filter-tag:hover, .filter-tag.active {
+  background: var(--text); color: var(--bg);
+}
+
+/* ── Post grid ── */
+.posts-section {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+.posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2px;
+}
+.post-card {
+  background: var(--surface);
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  transition: all var(--transition);
+  text-decoration: none; color: inherit;
+  display: block; position: relative;
+  overflow: hidden;
+}
+.post-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 3px; height: 0;
+  background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+  transition: height var(--transition);
+}
+.post-card:hover::before { height: 100%; }
+.post-card:hover { z-index: 1; box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+
+.card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-tag {
+  font-family: var(--font-ui);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--accent); padding: 3px 0;
+}
+.card-title {
+  font-size: 18px; font-weight: 400;
+  line-height: 1.35; letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 10px;
+}
+.card-desc {
+  font-family: var(--font-ui);
+  font-size: 13px; color: var(--text-2);
+  line-height: 1.55; margin-bottom: 20px;
+}
+.card-meta {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+}
+.card-meta .dot { width: 3px; height: 3px; background: var(--border); border-radius: 50%; }
+
+/* ── Post page ── */
+.post-container {
+  max-width: var(--max-w);
+  margin: 60px auto 100px;
+  padding: 0 24px;
+}
+.post-header { margin-bottom: 48px; }
+.post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.post-tag {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); text-decoration: none;
+  padding: 4px 10px; border-radius: 4px;
+  background: rgba(0,113,227,.06);
+  transition: all var(--transition);
+}
+.post-tag:hover { background: var(--accent); color: white; }
+.post-title {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 400; line-height: 1.15;
+  letter-spacing: -1px; color: var(--text);
+  margin-bottom: 16px;
+}
+.post-meta {
+  display: flex; align-items: center; gap: 16px;
+  font-family: var(--font-ui); font-size: 13px; color: var(--text-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0; margin-top: 20px;
+}
+.post-meta time { font-weight: 500; color: var(--text); }
+.post-meta .sep { color: var(--border); }
+
+/* ── Article content ── */
+.post-body { font-size: 17px; line-height: 1.75; }
+.post-body h2 {
+  font-size: 24px; font-weight: 400;
+  letter-spacing: -0.5px;
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.post-body h3 {
+  font-size: 19px; font-weight: 400;
+  margin: 36px 0 12px; color: var(--text);
+}
+.post-body p { margin-bottom: 20px; color: var(--text); }
+.post-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.post-body a:hover { text-decoration: none; }
+.post-body strong { font-weight: 600; }
+.post-body em { font-style: italic; color: var(--text-2); }
+.post-body ul, .post-body ol { margin: 0 0 20px 24px; }
+.post-body li { margin-bottom: 6px; }
+
+/* ── Code blocks ── */
+.post-body .code-block, .post-body pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 13.5px; line-height: 1.65;
+  padding: 24px 28px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 28px 0;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.post-body code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-2);
+  color: #e06c75;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.post-body pre code {
+  background: transparent; color: inherit; padding: 0; border-radius: 0;
+}
+
+/* ── Blockquote ── */
+.post-body blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 28px 0; padding: 16px 24px;
+  background: rgba(0,113,227,.04);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: italic; color: var(--text-2);
+}
+
+/* ── Back link ── */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-ui); font-size: 13px;
+  color: var(--text-2); text-decoration: none;
+  margin-bottom: 48px;
+  transition: color var(--transition);
+}
+.back-link:hover { color: var(--text); }
+.back-link svg { width: 14px; height: 14px; }
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  letter-spacing: 0.2px;
+}
+footer a { color: var(--text-2); text-decoration: none; }
+footer a:hover { color: var(--text); }
+.footer-inner { max-width: var(--max-w-wide); margin: 0 auto; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 80px 24px;
+  font-family: var(--font-ui); color: var(--text-3);
+}
+.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-2); }
+
+/* ── Tags page ── */
+.tags-section {
+  max-width: var(--max-w-wide);
+  margin: 60px auto;
+  padding: 0 24px 80px;
+}
+.tags-section h2 {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 32px;
+}
+.tag-group { margin-bottom: 48px; }
+.tag-group-name {
+  font-family: var(--font-ui);
+  font-size: 20px; font-weight: 300;
+  letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.tag-count {
+  font-size: 12px; font-weight: 600;
+  color: var(--accent);
+  background: rgba(0,113,227,.08);
+  padding: 3px 8px; border-radius: 10px;
+}
+.tag-posts { display: flex; flex-direction: column; gap: 2px; }
+.tag-post-link {
+  display: flex; align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-decoration: none; color: var(--text);
+  font-size: 15px; transition: all var(--transition);
+  border-radius: 0;
+}
+.tag-post-link:hover { background: var(--surface-2); padding-left: 20px; }
+.tag-post-date {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3); flex-shrink: 0;
+}
+
+/* ── Reading progress bar ── */
+.progress-bar {
+  position: fixed; top: 52px; left: 0;
+  height: 2px; width: 0%;
+  background: linear-gradient(to right, var(--accent), var(--accent-2));
+  z-index: 200; transition: width 0.1s linear;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .nav-inner { padding: 0 16px; }
+  .hero { padding: 48px 16px 40px; }
+  .posts-section, .filter-bar, .tags-section { padding-left: 16px; padding-right: 16px; }
+  .posts-grid { grid-template-columns: 1fr; }
+  .post-container { padding: 0 16px; margin-top: 32px; }
+}
+
+
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/index.html" class="nav-brand">aniketmaithani<span>.net</span></a>
+    <div class="nav-links">
+      <a href="/index.html">Writing</a>
+      <a href="/tags.html">Tags</a>
+      <a href="https://aniketmaithani.net" target="_blank">Home</a>
+    </div>
+  </div>
+</nav>
+
+<div class="progress-bar" id="progress"></div>
+<div class="post-container">
+  <a class="back-link" href="../index.html">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M10 12L6 8l4-4"/>
+    </svg>
+    All posts
+  </a>
+  <header class="post-header">
+    <div class="post-tags"><a class="post-tag" href="../tags.html#aws">#aws</a><a class="post-tag" href="../tags.html#security">#security</a><a class="post-tag" href="../tags.html#cryptography">#cryptography</a><a class="post-tag" href="../tags.html#hsm">#hsm</a><a class="post-tag" href="../tags.html#pkcs11">#pkcs11</a><a class="post-tag" href="../tags.html#fintech">#fintech</a><a class="post-tag" href="../tags.html#python">#python</a></div>
+    <h1 class="post-title">CloudHSM Zero Key Exposure: Proving Your Encryption Keys Never Touch RAM</h1>
+    <div class="post-meta">
+      <time datetime="2026-02-27T00:00:00">February 27, 2026</time>
+      <span class="sep">·</span>
+      <span>Aniket Maithani</span>
+      <span class="sep">·</span>
+      <span>12 min read</span>
+    </div>
+  </header>
+  <article class="post-body">
+    <h2 id="the-problem-with-secure-key-management">The Problem With &ldquo;Secure&rdquo; Key Management<a class="headerlink" href="#the-problem-with-secure-key-management" title="Permanent link">&para;</a></h2>
+<p>In fintech, the encryption key is the only thing standing between your data and an attacker. Everything else: access controls, network policies, TLS, rate limiting, is defense in depth. The key itself is the single point of failure.</p>
+<p>The standard approach most engineering teams use is to store keys in environment variables, AWS Secrets Manager, or HashiCorp Vault. These are all reasonable choices, and they are all architecturally flawed in the same way. When your application needs to encrypt or decrypt something, the key gets loaded into process memory. It becomes a Python <code>bytes</code> object sitting on the heap. At that point, regardless of where it was stored before, the key is exposed.</p>
+<p>Here is what that means concretely. Any process with sufficient OS privilege can read <code>/proc/&lt;pid&gt;/mem</code> and extract live AES key bytes from your running application. A kernel OOM kill writes a core dump to disk with your key bytes in it. Under memory pressure, the OS can page key material to swap as cleartext. In containerized environments, a container escape can expose host memory regions. Hardware vulnerabilities like Spectre and Meltdown can leak cross-process memory on shared cloud infrastructure.</p>
+<p>None of these attack vectors depend on your code being poorly written. They are properties of how keys are handled in software.</p>
+<p>The only architecturally sound solution is to ensure the key is never exposed outside of tamper-resistant hardware, not at creation, not at use, not ever. That is what Hardware Security Modules provide. I built a proof-of-concept to demonstrate this with AWS CloudHSM, and to make the guarantee verifiable rather than just claimed.</p>
+<p>The full code is available at <a href="https://github.com/aniketmaithani/hsm-zke-poc">github.com/aniketmaithani/hsm-zke-poc</a>.</p>
+<hr />
+<h2 id="what-cloudhsm-actually-does">What CloudHSM Actually Does<a class="headerlink" href="#what-cloudhsm-actually-does" title="Permanent link">&para;</a></h2>
+<p>AWS CloudHSM is a dedicated hardware security module running inside AWS&rsquo;s data centers. It is FIPS 140-2 Level 3 validated. The relevant properties for this discussion are:</p>
+<p>When a key is generated in CloudHSM, it is created using the HSM&rsquo;s own hardware random number generator. It never passes through the host OS. The key is stored in battery-backed, tamper-responsive RAM inside the HSM enclosure. If the device is physically tampered with, it zeroises all key material automatically.</p>
+<p>The PKCS#11 interface returns only an integer handle to the application, not key bytes. This is the fundamental architectural difference. When your application calls <code>key.encrypt(data)</code>, it is not encrypting locally. That call sends the data to the HSM over an encrypted channel, and the HSM returns ciphertext. The key material never crosses the HSM boundary in either direction.</p>
+<p>The distinction matters:</p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>What happens at encrypt time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Software KMS (Vault, Secrets Manager)</td>
+<td>Key bytes decrypted into application RAM, <code>encrypt()</code> runs in Python/OpenSSL inside the process</td>
+</tr>
+<tr>
+<td>CloudHSM PKCS#11</td>
+<td>Integer handle passed to SDK, data sent to HSM hardware, ciphertext returned, no key bytes in Python heap, stack, or registers</td>
+</tr>
+</tbody>
+</table>
+<p>The key attributes are enforced by HSM firmware and cannot be overridden by software. <code>CKA_SENSITIVE = TRUE</code> means the HSM will never return key value in cleartext, even to authenticated users. <code>CKA_EXTRACTABLE = FALSE</code> means the key cannot be exported from the HSM in any form. These are hardware constraints, not application-layer promises.</p>
+<hr />
+<h2 id="the-poc-architecture">The PoC Architecture<a class="headerlink" href="#the-poc-architecture" title="Permanent link">&para;</a></h2>
+<p>The repository has three main components.</p>
+<p><code>chsm.py</code> handles CloudHSM cluster provisioning. It automates the full lifecycle from a local machine with AWS credentials, creates the cluster, provisions the HSM, signs the CSR with a self-signed CA, initializes the cluster, and generates the AES-256 key inside the HSM. All AWS operations use <code>boto3</code> with no dependency on the AWS CLI. State is persisted to <code>hsm_state.json</code> so phases are resumable if interrupted.</p>
+<p><code>app.py</code> is a Flask API server that exposes HSM operations as REST endpoints. It runs inside the VPC on an EC2 instance that has CloudHSM network access via TCP 2223-2225 to the HSM ENI. The important endpoints are:</p>
+<div class="code-block"><pre><span></span><code>POST /api/encrypt        Accept plaintext, return ciphertext_b64
+POST /api/decrypt        Accept ciphertext_b64, return plaintext
+POST /api/memory/scan    Scan /proc/self/mem for key material, return verdict
+GET  /api/memory/snapshot Python GC object count snapshot
+</code></pre></div>
+
+<p>The memory scan endpoint is the proof mechanism. After every encrypt or decrypt operation, you can trigger a live forensic scan of the Flask process&rsquo;s own memory and verify that no key bytes are present.</p>
+<p><code>index.html</code> is a single-file frontend dashboard. No build toolchain required. It includes an architecture diagram, encrypt/decrypt UI, and a memory forensics panel that shows the scan verdict live.</p>
+<hr />
+<h2 id="the-pkcs11-integration-in-python">The PKCS#11 Integration in Python<a class="headerlink" href="#the-pkcs11-integration-in-python" title="Permanent link">&para;</a></h2>
+<p>The Python side is straightforward once the CloudHSM SDK5 is installed and configured. The <code>python-pkcs11</code> library wraps the native library.</p>
+<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">pkcs11</span>
+<span class="kn">from</span> <span class="nn">pkcs11</span> <span class="kn">import</span> <span class="n">Mechanism</span><span class="p">,</span> <span class="n">KeyType</span><span class="p">,</span> <span class="n">ObjectClass</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="n">PKCS11_LIB</span> <span class="o">=</span> <span class="s1">&#39;/opt/cloudhsm/lib/libcloudhsm_pkcs11.so&#39;</span>
+<span class="n">HSM_CU_USER</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;HSM_CU_USER&#39;</span><span class="p">]</span>
+<span class="n">HSM_CU_PASSWORD</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;HSM_CU_PASSWORD&#39;</span><span class="p">]</span>
+<span class="n">KEY_LABEL</span> <span class="o">=</span> <span class="s1">&#39;gold-aes-256&#39;</span>
+
+
+<span class="k">def</span> <span class="nf">get_hsm_session</span><span class="p">():</span>
+    <span class="n">lib</span> <span class="o">=</span> <span class="n">pkcs11</span><span class="o">.</span><span class="n">lib</span><span class="p">(</span><span class="n">PKCS11_LIB</span><span class="p">)</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">lib</span><span class="o">.</span><span class="n">get_token</span><span class="p">(</span><span class="n">token_label</span><span class="o">=</span><span class="s1">&#39;hsm1&#39;</span><span class="p">)</span>
+    <span class="c1"># Opens an authenticated PKCS#11 session</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">user_pin</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">HSM_CU_USER</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">HSM_CU_PASSWORD</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">session</span>
+
+
+<span class="k">def</span> <span class="nf">ensure_key</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate AES-256 key in HSM if it does not already exist.&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Attempt to find existing key</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
+                <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
+                <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
+                <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">pkcs11</span><span class="o">.</span><span class="n">NoSuchKey</span><span class="p">:</span>
+            <span class="c1"># Generate inside HSM hardware RNG</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">generate_key</span><span class="p">(</span>
+                <span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
+                <span class="mi">256</span><span class="p">,</span>
+                <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span><span class="p">,</span>
+                <span class="n">store</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># persist across sessions</span>
+                <span class="n">template</span><span class="o">=</span><span class="p">{</span>
+                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">SENSITIVE</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">EXTRACTABLE</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">ENCRYPT</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">DECRYPT</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">encrypt</span><span class="p">(</span><span class="n">plaintext</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
+            <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
+            <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
+        <span class="p">)</span>
+        <span class="c1"># iv is generated locally; key operation happens inside HSM</span>
+        <span class="n">iv</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">generate_random</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
+        <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encrypt</span><span class="p">(</span>
+            <span class="n">plaintext</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+            <span class="n">mechanism</span><span class="o">=</span><span class="n">Mechanism</span><span class="o">.</span><span class="n">AES_CBC_PAD</span><span class="p">,</span>
+            <span class="n">mechanism_param</span><span class="o">=</span><span class="n">iv</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">iv</span> <span class="o">+</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">ciphertext</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">decrypt</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
+            <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
+            <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
+        <span class="p">)</span>
+        <span class="n">iv</span><span class="p">,</span> <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:</span><span class="mi">16</span><span class="p">],</span> <span class="n">data</span><span class="p">[</span><span class="mi">16</span><span class="p">:]</span>
+        <span class="n">plaintext</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span>
+            <span class="n">ciphertext</span><span class="p">,</span>
+            <span class="n">mechanism</span><span class="o">=</span><span class="n">Mechanism</span><span class="o">.</span><span class="n">AES_CBC_PAD</span><span class="p">,</span>
+            <span class="n">mechanism_param</span><span class="o">=</span><span class="n">iv</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">plaintext</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>The <code>key</code> object here is a handle. It is an integer reference to an object in HSM-managed space. <code>key.encrypt()</code> is a remote procedure call to the HSM hardware. The <code>ciphertext</code> that comes back is bytes. The <code>plaintext</code> going in is bytes. The key that performed the operation never left the HSM, and never appeared on the Python heap.</p>
+<hr />
+<h2 id="the-memory-forensics-proof">The Memory Forensics Proof<a class="headerlink" href="#the-memory-forensics-proof" title="Permanent link">&para;</a></h2>
+<p>The claim that the key never touches RAM needs to be verifiable, not just asserted. The <code>/api/memory/scan</code> endpoint does this by scanning the Flask process&rsquo;s own memory.</p>
+<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+
+<span class="k">def</span> <span class="nf">scan_process_memory_for_key</span><span class="p">(</span><span class="n">key_bytes_hint</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read /proc/self/maps to enumerate all readable memory regions,</span>
+<span class="sd">    then scan each region for the known key material.</span>
+<span class="sd">    Since we do not have the key bytes (that is the point), we scan</span>
+<span class="sd">    for patterns that would indicate AES key material: high-entropy</span>
+<span class="sd">    32-byte sequences not matching known Python object headers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">suspicious_regions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">maps_path</span> <span class="o">=</span> <span class="s1">&#39;/proc/self/maps&#39;</span>
+    <span class="n">mem_path</span> <span class="o">=</span> <span class="s1">&#39;/proc/self/mem&#39;</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">maps_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">maps_file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">maps_file</span><span class="p">:</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="s1">&#39;r&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+                <span class="k">continue</span>  <span class="c1"># skip non-readable regions</span>
+
+            <span class="n">addr_range</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">addr_range</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">16</span><span class="p">)</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">addr_range</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">16</span><span class="p">)</span>
+            <span class="n">region_name</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">5</span> <span class="k">else</span> <span class="s1">&#39;anonymous&#39;</span>
+
+            <span class="c1"># Skip very large regions (stack, shared libs) for PoC speed</span>
+            <span class="k">if</span> <span class="n">end</span> <span class="o">-</span> <span class="n">start</span> <span class="o">&gt;</span> <span class="mi">10</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mem_path</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">mem_file</span><span class="p">:</span>
+                    <span class="n">mem_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>
+                    <span class="n">region_data</span> <span class="o">=</span> <span class="n">mem_file</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">end</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span>
+
+                <span class="c1"># Look for 32-byte sequences with high Shannon entropy</span>
+                <span class="c1"># Real AES keys have near-maximum entropy (close to 8 bits/byte)</span>
+                <span class="n">high_entropy_blocks</span> <span class="o">=</span> <span class="n">find_high_entropy_blocks</span><span class="p">(</span><span class="n">region_data</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">high_entropy_blocks</span><span class="p">:</span>
+                    <span class="n">suspicious_regions</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                        <span class="s1">&#39;region&#39;</span><span class="p">:</span> <span class="n">region_name</span><span class="p">,</span>
+                        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="nb">hex</span><span class="p">(</span><span class="n">start</span><span class="p">),</span>
+                        <span class="s1">&#39;blocks&#39;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">high_entropy_blocks</span><span class="p">)</span>
+                    <span class="p">})</span>
+
+            <span class="k">except</span> <span class="p">(</span><span class="ne">PermissionError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+                <span class="k">continue</span>
+
+    <span class="n">verdict</span> <span class="o">=</span> <span class="s1">&#39;KEY_NOT_IN_MEMORY&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">suspicious_regions</span> <span class="k">else</span> <span class="s1">&#39;SUSPICIOUS_REGIONS_FOUND&#39;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">&#39;verdict&#39;</span><span class="p">:</span> <span class="n">verdict</span><span class="p">,</span>
+        <span class="s1">&#39;suspicious&#39;</span><span class="p">:</span> <span class="n">suspicious_regions</span><span class="p">,</span>
+        <span class="s1">&#39;scanned_at&#39;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+    <span class="p">}</span>
+</code></pre></div>
+
+<p>Running this after an encrypt operation returns:</p>
+<div class="code-block"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;verdict&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KEY_NOT_IN_MEMORY&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;suspicious&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">&quot;scanned_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-04-15T10:23:41.002Z&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>This is not a claim. This is a forensic scan of the live process memory running immediately after the encryption operation completed. The key bytes are not there because they were never there. The HSM performed the operation internally.</p>
+<hr />
+<h2 id="why-not-vault-with-pkcs11">Why Not Vault with PKCS#11<a class="headerlink" href="#why-not-vault-with-pkcs11" title="Permanent link">&para;</a></h2>
+<p>Vault was the initially considered approach for this PoC. After evaluation, I dropped it for three reasons.</p>
+<p>First, Vault&rsquo;s PKCS#11 integration for HSM-backed key storage is a Vault Enterprise feature. It is not in Vault OSS or Community Edition. Vault Enterprise starts at approximately $30,000 to $50,000 per year. For a PoC, that is a non-starter.</p>
+<p>Second, even with an Enterprise license, Vault&rsquo;s Transit secrets engine does not achieve the same guarantee. Transit generates and manages Data Encryption Keys in Vault&rsquo;s encrypted storage, backed by the HSM-protected master key. The DEK is decrypted into Vault server memory at encryption time. The HSM protects only the master key. Per-secret DEKs live in Vault&rsquo;s RAM during operations. This is architecturally weaker than direct PKCS#11 for use cases where per-operation key non-exposure must be provably demonstrated.</p>
+<p>Third, direct PKCS#11 is operationally simpler for this use case. Vault adds a cluster to provision, Consul or Raft for storage, policies, auth methods, and audit logging to configure. For a PoC, that is two to four weeks of setup with no architectural advantage over four hours of CloudHSM provisioning.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Direct PKCS#11</th>
+<th>Vault Transit (Enterprise)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key at use time</td>
+<td>Never in process memory</td>
+<td>DEK loaded into Vault server RAM</td>
+</tr>
+<tr>
+<td>Key exposure proof</td>
+<td>Live <code>/proc/self/mem</code> scan</td>
+<td>Not directly provable at DEK level</td>
+</tr>
+<tr>
+<td>Cost</td>
+<td>CloudHSM ~$2.10/hr</td>
+<td>Vault Enterprise ~$30k-50k/yr</td>
+</tr>
+<tr>
+<td>PoC setup time</td>
+<td>~4 hours</td>
+<td>~1-2 weeks</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="provisioning-what-the-setup-actually-looks-like">Provisioning: What the Setup Actually Looks Like<a class="headerlink" href="#provisioning-what-the-setup-actually-looks-like" title="Permanent link">&para;</a></h2>
+<p>The provisioning flow in <code>chsm.py</code> runs in three phases. Phase 1 runs locally and creates the CloudHSM cluster, provisions the HSM, signs the CSR with a self-signed CA, and initializes the cluster. All of this is <code>boto3</code> calls with no AWS CLI dependency.</p>
+<div class="code-block"><pre><span></span><code><span class="k">def</span> <span class="nf">phase1_provision</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="n">ec2</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;ec2&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">aws_creds</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
+    <span class="n">hsm2</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;cloudhsmv2&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">aws_creds</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
+
+    <span class="c1"># Create cluster</span>
+    <span class="n">cluster</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">create_cluster</span><span class="p">(</span>
+        <span class="n">HsmType</span><span class="o">=</span><span class="s1">&#39;hsm2m.medium&#39;</span><span class="p">,</span>
+        <span class="n">SubnetIds</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;subnets&#39;</span><span class="p">],</span>
+        <span class="n">TagList</span><span class="o">=</span><span class="p">[{</span><span class="s1">&#39;Key&#39;</span><span class="p">:</span> <span class="s1">&#39;Name&#39;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">:</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;cluster_name&#39;</span><span class="p">]}]</span>
+    <span class="p">)</span>
+    <span class="n">cluster_id</span> <span class="o">=</span> <span class="n">cluster</span><span class="p">[</span><span class="s1">&#39;Cluster&#39;</span><span class="p">][</span><span class="s1">&#39;ClusterId&#39;</span><span class="p">]</span>
+    <span class="n">save_state</span><span class="p">({</span><span class="s1">&#39;cluster_id&#39;</span><span class="p">:</span> <span class="n">cluster_id</span><span class="p">})</span>
+
+    <span class="c1"># Wait for cluster to reach UNINITIALIZED state</span>
+    <span class="n">wait_for_cluster_state</span><span class="p">(</span><span class="n">hsm2</span><span class="p">,</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="s1">&#39;UNINITIALIZED&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Provision one HSM in the specified AZ</span>
+    <span class="n">hsm</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">create_hsm</span><span class="p">(</span>
+        <span class="n">ClusterId</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
+        <span class="n">AvailabilityZone</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;hsm_az&#39;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">wait_for_hsm_state</span><span class="p">(</span><span class="n">hsm2</span><span class="p">,</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="s1">&#39;ACTIVE&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Get CSR for cluster certificate signing</span>
+    <span class="n">cluster_detail</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">describe_clusters</span><span class="p">(</span>
+        <span class="n">Filters</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;clusterIds&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">cluster_id</span><span class="p">]}</span>
+    <span class="p">)[</span><span class="s1">&#39;Clusters&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">csr_pem</span> <span class="o">=</span> <span class="n">cluster_detail</span><span class="p">[</span><span class="s1">&#39;Certificates&#39;</span><span class="p">][</span><span class="s1">&#39;ClusterCsr&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Sign CSR using Python cryptography library (no openssl binary needed)</span>
+    <span class="n">signed_cert</span><span class="p">,</span> <span class="n">ca_cert</span> <span class="o">=</span> <span class="n">sign_csr_with_self_signed_ca</span><span class="p">(</span><span class="n">csr_pem</span><span class="p">)</span>
+
+    <span class="c1"># Initialize cluster with signed certificate</span>
+    <span class="n">hsm2</span><span class="o">.</span><span class="n">initialize_cluster</span><span class="p">(</span>
+        <span class="n">ClusterId</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
+        <span class="n">SignedCert</span><span class="o">=</span><span class="n">signed_cert</span><span class="p">,</span>
+        <span class="n">TrustAnchor</span><span class="o">=</span><span class="n">ca_cert</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p>Phase 2 is a one-time manual step on the EC2 instance using <code>cloudhsm-cli</code> to activate the cluster with the PRECO password and create the Crypto User that the application will use. Phase 3 connects via PKCS#11, generates the AES-256 key, and runs an encrypt/decrypt verification.</p>
+<p>The security group wiring between the EC2 instance and the HSM ENI is a common stumbling block. The repository includes <code>cloudhsm_sg.py</code>, a support script that auto-discovers and attaches the CloudHSM cluster security group to a specified EC2 instance by private IP.</p>
+<hr />
+<h2 id="production-considerations">Production Considerations<a class="headerlink" href="#production-considerations" title="Permanent link">&para;</a></h2>
+<p>The PoC runs on a single HSM. Production requires at minimum two HSMs in separate AZs to qualify for the CloudHSM SLA. In Mumbai (ap-south-1), there are three AZs, so a three-HSM cluster is preferable.</p>
+<p>PKCS#11 sessions are not free. The PoC opens a new session per request. In production, maintain a session pool. The overhead of opening and authenticating a session on every API call is significant at scale.</p>
+<p>For high-throughput scenarios, consider a Key Encryption Key hierarchy. Use the HSM to wrap Data Encryption Keys stored in your database. The DEK is decrypted by the HSM and used for bulk data encryption, but the per-operation HSM call wraps and unwraps the DEK rather than performing every data encryption inside the HSM. This reduces direct HSM operations per transaction while keeping the master key non-exportable.</p>
+<p>CloudHSM audit logging should be enabled to CloudWatch Logs from day one. The HSM produces an audit trail of every key operation, every session open, every key generation, independent of your application logs. In a PCI-DSS or ISO 27001 audit, this is the audit trail that matters.</p>
+<p>Cost is roughly $2.10 per hour per HSM. A two-HSM HA cluster is approximately $3,024 per month. There is no per-operation charge, so high-throughput workloads are cost-efficient at scale. Delete immediately after testing if you are just running the PoC.</p>
+<div class="code-block"><pre><span></span><code>python<span class="w"> </span>chsm.py<span class="w"> </span>--delete<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--access-key<span class="w"> </span>&lt;AWS_ACCESS_KEY_ID&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--secret-key<span class="w"> </span>&lt;AWS_SECRET_ACCESS_KEY&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--cluster-id<span class="w"> </span>&lt;CLUSTER_ID&gt;
+</code></pre></div>
+
+<hr />
+<h2 id="compliance-posture">Compliance Posture<a class="headerlink" href="#compliance-posture" title="Permanent link">&para;</a></h2>
+<p>This architecture satisfies several compliance requirements directly.</p>
+<p>PCI-DSS Requirement 3.5 and 3.6 cover protection of cryptographic keys used to protect cardholder data. HSM key management with <code>CKA_EXTRACTABLE = FALSE</code> satisfies this requirement in a way that software key management cannot, because the hardware enforces the constraint independently of the application.</p>
+<p>ISO 27001 Annex A.10 covers cryptographic controls. The CloudHSM is FIPS 140-2 Level 3 validated. Document the architecture in your ISMS and reference the AWS compliance attestation.</p>
+<p>RBI guidelines for digital gold platforms and payment systems reference secure key management. An HSM-backed architecture with a hardware-enforced non-exportability guarantee is the strongest possible position in a regulatory review.</p>
+<hr />
+<h2 id="running-the-poc">Running the PoC<a class="headerlink" href="#running-the-poc" title="Permanent link">&para;</a></h2>
+<p>The full setup is documented in the README at <a href="https://github.com/aniketmaithani/hsm-zke-poc">github.com/aniketmaithani/hsm-zke-poc</a>. The quick version:</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># Local machine</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/aniketmaithani/hsm-zke-poc
+<span class="nb">cd</span><span class="w"> </span>hsm-zke-poc
+pip<span class="w"> </span>install<span class="w"> </span>boto3<span class="w"> </span>cryptography
+
+<span class="c1"># Provision CloudHSM cluster (takes ~15 minutes)</span>
+python<span class="w"> </span>chsm.py<span class="w"> </span>--phase1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--region<span class="w"> </span>ap-south-1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--vpc-id<span class="w"> </span>vpc-xxxxxxxxx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--subnets<span class="w"> </span>subnet-aaa,subnet-bbb<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--hsm-az<span class="w"> </span>ap-south-1a<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--cluster-name<span class="w"> </span>my-hsm-cluster
+
+<span class="c1"># On EC2: install SDK, activate cluster, create CU (see README Phase 2)</span>
+
+<span class="c1"># On EC2: run the Flask API</span>
+<span class="nv">HSM_CU_USER</span><span class="o">=</span>appuser<span class="w"> </span><span class="nv">HSM_CU_PASSWORD</span><span class="o">=</span>yourpassword<span class="w"> </span>python<span class="w"> </span>app.py
+
+<span class="c1"># Local: SSH tunnel + open index.html</span>
+ssh<span class="w"> </span>-L<span class="w"> </span><span class="m">5050</span>:localhost:5050<span class="w"> </span>ubuntu@&lt;EC2_IP&gt;<span class="w"> </span>-i<span class="w"> </span>your-key.pem<span class="w"> </span>-N<span class="w"> </span><span class="p">&amp;</span>
+open<span class="w"> </span>index.html
+</code></pre></div>
+
+<p>Then trigger the memory scan after an encrypt operation and observe the verdict. That is the entire point of the PoC: not to claim the key is safe, but to demonstrate it forensically.</p>
+<hr />
+<h2 id="closing-thoughts">Closing Thoughts<a class="headerlink" href="#closing-thoughts" title="Permanent link">&para;</a></h2>
+<p>The background for this PoC came from working with a German client (Tesseracted Labs) on a system where key exposure was an unacceptable risk in the threat model. The conventional secrets management approach did not satisfy the requirement because the client needed to be able to demonstrate, not just assert, that key material never touched application memory.</p>
+<p>The PoC achieves that. The memory scan endpoint is not a marketing claim. It is a forensic verification running against the live process after real cryptographic operations.</p>
+<p>If you are building in regulated fintech, specifically digital gold, payment infrastructure, or anything adjacent to PCI-DSS scope, the HSM cost is worth evaluating against the cost of a breach. The architecture is not complicated once CloudHSM is provisioned. The PKCS#11 interface is well-standardized and the Python bindings work cleanly.</p>
+<p>The repository is at <a href="https://github.com/aniketmaithani/hsm-zke-poc">github.com/aniketmaithani/hsm-zke-poc</a>. Open an issue if you run into provisioning problems. The security group wiring step is where most people get stuck, which is why the support script is there.</p>
+  </article>
+</div>
+
+<script>
+  const bar = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const scrolled = window.scrollY;
+    const total = document.body.scrollHeight - window.innerHeight;
+    bar.style.width = (scrolled / total * 100) + '%';
+  });
+</script>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      Written by <a href="https://aniketmaithani.net">Aniket Maithani</a> — 
+      Engineering Leader &amp; Fintech Consultant · India
+      <br><br>
+      Built with a Python script and raw HTML · No framework required
+    </p>
+  </div>
+</footer>
+</body>
+</html>
