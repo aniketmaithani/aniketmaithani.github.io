@@ -1,0 +1,19 @@
+[
+  {
+    "slug": "_template",
+    "title": "Your Post Title Here",
+    "date": "2025-06-01",
+    "date_display": "June 01, 2025",
+    "date_iso": "2025-06-01T00:00:00",
+    "author": "Aniket Maithani",
+    "tags": [
+      "django",
+      "python",
+      "fintech"
+    ],
+    "description": "A one-line summary shown on the index card and in SEO meta tags.",
+    "reading_time": 5,
+    "cover_image": "",
+    "source_file": "/Users/aniketmaithani/blogger/posts/_template.md"
+  }
+]
