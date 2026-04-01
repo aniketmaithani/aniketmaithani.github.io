@@ -1,5 +1,26 @@
 [
   {
+    "slug": "side-project-adaptive-music",
+    "title": "ESP32 + mmWave Radar: Privacy-First People Counting and Adaptive Music for Retail",
+    "date": "2026-03-28",
+    "date_display": "March 28, 2026",
+    "date_iso": "2026-03-28T00:00:00",
+    "author": "Aniket Maithani",
+    "tags": [
+      "iot",
+      "esp32",
+      "python",
+      "flask",
+      "aniket-pet-project",
+      "hardware",
+      "retail-tech"
+    ],
+    "description": "How I built a crowd-adaptive music system for retail using an ESP32, an RD-03E mmWave radar, a Flask state API, and a mood engine that maps crowd density to BPM and genre, without a single camera or microphone.",
+    "reading_time": 14,
+    "cover_image": "",
+    "source_file": "/Users/aniketmaithani/blogger/posts/side-project-adaptive-music.md"
+  },
+  {
     "slug": "cloudhsm-zk-exposure",
     "title": "CloudHSM Zero Key Exposure: Proving Your Encryption Keys Never Touch RAM",
     "date": "2026-02-27",
