@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Django Payment Gateways: Webhooks, Idempotency, and Async Recon Done Right — aniketmaithani.net</title>
+  <meta name="description" content="Most Django payment integrations handle the happy path well. This post covers what actually breaks in production: webhook idempotency, signature verification, and async reconciliation.">
+  <meta property="og:title" content="Django Payment Gateways: Webhooks, Idempotency, and Async Recon Done Right — aniketmaithani.net">
+  <meta property="og:description" content="Most Django payment integrations handle the happy path well. This post covers what actually breaks in production: webhook idempotency, signature verification, and async reconciliation.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+  <style>
+
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #fafaf8;
+  --surface:     #ffffff;
+  --surface-2:   #f5f5f0;
+  --border:      #e8e8e4;
+  --text:        #1d1d1f;
+  --text-2:      #6e6e73;
+  --text-3:      #aeaeb2;
+  --accent:      #0071e3;
+  --accent-2:    #00b4d8;
+  --tag-bg:      #f0f0eb;
+  --tag-text:    #3a3a3c;
+  --code-bg:     #1e1e2e;
+  --code-text:   #cdd6f4;
+  --radius:      12px;
+  --radius-sm:   6px;
+  --font-sans:   'Newsreader', Georgia, serif;
+  --font-ui:     -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono:   'JetBrains Mono', 'SF Mono', monospace;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow:      0 4px 24px rgba(0,0,0,.08);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,.1);
+  --max-w:       680px;
+  --max-w-wide:  1100px;
+  --transition:  0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 300;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Navigation ── */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(250,250,248,.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand {
+  font-family: var(--font-ui);
+  font-size: 15px; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  letter-spacing: -0.3px;
+}
+.nav-brand span { color: var(--accent); }
+.nav-links { display: flex; gap: 8px; }
+.nav-links a {
+  font-family: var(--font-ui);
+  font-size: 13px; font-weight: 400;
+  color: var(--text-2); text-decoration: none;
+  padding: 5px 12px; border-radius: 20px;
+  transition: all var(--transition);
+}
+.nav-links a:hover { background: var(--surface-2); color: var(--text); }
+
+/* ── Hero ── */
+.hero {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 80px 24px 60px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-label {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 16px;
+}
+.hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 300; line-height: 1.1;
+  letter-spacing: -1.5px; color: var(--text);
+  max-width: 600px;
+}
+.hero h1 em { font-style: italic; color: var(--text-2); }
+.hero p {
+  font-family: var(--font-ui);
+  font-size: 15px; color: var(--text-2);
+  margin-top: 16px; max-width: 440px;
+  line-height: 1.6;
+}
+
+/* ── Tag filter bar ── */
+.filter-bar {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 24px 24px 0;
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: center;
+}
+.filter-label {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  font-weight: 500; margin-right: 4px;
+}
+.filter-tag {
+  font-family: var(--font-ui);
+  font-size: 12px; font-weight: 500;
+  padding: 5px 14px; border-radius: 20px;
+  background: var(--tag-bg); color: var(--tag-text);
+  border: 1px solid transparent;
+  cursor: pointer; transition: all var(--transition);
+  text-decoration: none;
+}
+.filter-tag:hover, .filter-tag.active {
+  background: var(--text); color: var(--bg);
+}
+
+/* ── Post grid ── */
+.posts-section {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+.posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2px;
+}
+.post-card {
+  background: var(--surface);
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  transition: all var(--transition);
+  text-decoration: none; color: inherit;
+  display: block; position: relative;
+  overflow: hidden;
+}
+.post-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 3px; height: 0;
+  background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+  transition: height var(--transition);
+}
+.post-card:hover::before { height: 100%; }
+.post-card:hover { z-index: 1; box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+
+.card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-tag {
+  font-family: var(--font-ui);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--accent); padding: 3px 0;
+}
+.card-title {
+  font-size: 18px; font-weight: 400;
+  line-height: 1.35; letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 10px;
+}
+.card-desc {
+  font-family: var(--font-ui);
+  font-size: 13px; color: var(--text-2);
+  line-height: 1.55; margin-bottom: 20px;
+}
+.card-meta {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+}
+.card-meta .dot { width: 3px; height: 3px; background: var(--border); border-radius: 50%; }
+
+/* ── Post page ── */
+.post-container {
+  max-width: var(--max-w);
+  margin: 60px auto 100px;
+  padding: 0 24px;
+}
+.post-header { margin-bottom: 48px; }
+.post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.post-tag {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); text-decoration: none;
+  padding: 4px 10px; border-radius: 4px;
+  background: rgba(0,113,227,.06);
+  transition: all var(--transition);
+}
+.post-tag:hover { background: var(--accent); color: white; }
+.post-title {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 400; line-height: 1.15;
+  letter-spacing: -1px; color: var(--text);
+  margin-bottom: 16px;
+}
+.post-meta {
+  display: flex; align-items: center; gap: 16px;
+  font-family: var(--font-ui); font-size: 13px; color: var(--text-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0; margin-top: 20px;
+}
+.post-meta time { font-weight: 500; color: var(--text); }
+.post-meta .sep { color: var(--border); }
+
+/* ── Article content ── */
+.post-body { font-size: 17px; line-height: 1.75; }
+.post-body h2 {
+  font-size: 24px; font-weight: 400;
+  letter-spacing: -0.5px;
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.post-body h3 {
+  font-size: 19px; font-weight: 400;
+  margin: 36px 0 12px; color: var(--text);
+}
+.post-body p { margin-bottom: 20px; color: var(--text); }
+.post-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.post-body a:hover { text-decoration: none; }
+.post-body strong { font-weight: 600; }
+.post-body em { font-style: italic; color: var(--text-2); }
+.post-body ul, .post-body ol { margin: 0 0 20px 24px; }
+.post-body li { margin-bottom: 6px; }
+
+/* ── Code blocks ── */
+.post-body .code-block, .post-body pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 13.5px; line-height: 1.65;
+  padding: 24px 28px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 28px 0;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.post-body code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-2);
+  color: #e06c75;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.post-body pre code {
+  background: transparent; color: inherit; padding: 0; border-radius: 0;
+}
+
+/* ── Blockquote ── */
+.post-body blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 28px 0; padding: 16px 24px;
+  background: rgba(0,113,227,.04);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: italic; color: var(--text-2);
+}
+
+/* ── Back link ── */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-ui); font-size: 13px;
+  color: var(--text-2); text-decoration: none;
+  margin-bottom: 48px;
+  transition: color var(--transition);
+}
+.back-link:hover { color: var(--text); }
+.back-link svg { width: 14px; height: 14px; }
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  letter-spacing: 0.2px;
+}
+footer a { color: var(--text-2); text-decoration: none; }
+footer a:hover { color: var(--text); }
+.footer-inner { max-width: var(--max-w-wide); margin: 0 auto; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 80px 24px;
+  font-family: var(--font-ui); color: var(--text-3);
+}
+.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-2); }
+
+/* ── Tags page ── */
+.tags-section {
+  max-width: var(--max-w-wide);
+  margin: 60px auto;
+  padding: 0 24px 80px;
+}
+.tags-section h2 {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 32px;
+}
+.tag-group { margin-bottom: 48px; }
+.tag-group-name {
+  font-family: var(--font-ui);
+  font-size: 20px; font-weight: 300;
+  letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.tag-count {
+  font-size: 12px; font-weight: 600;
+  color: var(--accent);
+  background: rgba(0,113,227,.08);
+  padding: 3px 8px; border-radius: 10px;
+}
+.tag-posts { display: flex; flex-direction: column; gap: 2px; }
+.tag-post-link {
+  display: flex; align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-decoration: none; color: var(--text);
+  font-size: 15px; transition: all var(--transition);
+  border-radius: 0;
+}
+.tag-post-link:hover { background: var(--surface-2); padding-left: 20px; }
+.tag-post-date {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3); flex-shrink: 0;
+}
+
+/* ── Reading progress bar ── */
+.progress-bar {
+  position: fixed; top: 52px; left: 0;
+  height: 2px; width: 0%;
+  background: linear-gradient(to right, var(--accent), var(--accent-2));
+  z-index: 200; transition: width 0.1s linear;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .nav-inner { padding: 0 16px; }
+  .hero { padding: 48px 16px 40px; }
+  .posts-section, .filter-bar, .tags-section { padding-left: 16px; padding-right: 16px; }
+  .posts-grid { grid-template-columns: 1fr; }
+  .post-container { padding: 0 16px; margin-top: 32px; }
+}
+
+
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/index.html" class="nav-brand">aniketmaithani<span>.net</span></a>
+    <div class="nav-links">
+      <a href="/index.html">Writing</a>
+      <a href="/tags.html">Tags</a>
+      <a href="https://aniketmaithani.net" target="_blank">Home</a>
+    </div>
+  </div>
+</nav>
+
+<div class="progress-bar" id="progress"></div>
+<div class="post-container">
+  <a class="back-link" href="../index.html">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M10 12L6 8l4-4"/>
+    </svg>
+    All posts
+  </a>
+  <header class="post-header">
+    <div class="post-tags"><a class="post-tag" href="../tags.html#django">#django</a><a class="post-tag" href="../tags.html#payments">#payments</a><a class="post-tag" href="../tags.html#razorpay">#razorpay</a><a class="post-tag" href="../tags.html#stripe">#stripe</a><a class="post-tag" href="../tags.html#fintech">#fintech</a><a class="post-tag" href="../tags.html#celery">#celery</a><a class="post-tag" href="../tags.html#security">#security</a></div>
+    <h1 class="post-title">Django Payment Gateways: Webhooks, Idempotency, and Async Recon Done Right</h1>
+    <div class="post-meta">
+      <time datetime="2025-08-01T00:00:00">August 01, 2025</time>
+      <span class="sep">·</span>
+      <span>Aniket Maithani</span>
+      <span class="sep">·</span>
+      <span>10 min read</span>
+    </div>
+  </header>
+  <article class="post-body">
+    <h2 id="why-most-payment-integrations-are-incomplete">Why Most Payment Integrations Are Incomplete<a class="headerlink" href="#why-most-payment-integrations-are-incomplete" title="Permanent link">&para;</a></h2>
+<p>I have integrated Razorpay, Stripe, Cashfree, and Augmont Gold across multiple products. PlusGold at GetPlus, the Synapse Conclave registration platform, and a few client projects in between. One thing I have noticed consistently is that developers spend most of their time on the payment initiation flow and almost no time on what happens after the payment completes.</p>
+<p>That is the wrong place to spend your energy.</p>
+<p>The payment initiation is largely a form submission with an API call. The real complexity lives in three areas: webhook handling, idempotency, and reconciliation. Get these wrong and you will double-credit accounts, miss failed transactions, and have no audit trail when finance comes asking.</p>
+<p>This post covers all three, with production-grade Django patterns for each.</p>
+<hr />
+<h2 id="the-basics-a-clean-gateway-abstraction">The Basics: A Clean Gateway Abstraction<a class="headerlink" href="#the-basics-a-clean-gateway-abstraction" title="Permanent link">&para;</a></h2>
+<p>Before getting into webhooks, the foundation matters. If you scatter Razorpay-specific code across your views, you will regret it the first time you add a second gateway.</p>
+<p>Start with an abstract base class:</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># payments/gateways/base.py</span>
+<span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">decimal</span> <span class="kn">import</span> <span class="n">Decimal</span>
+
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">PaymentOrder</span><span class="p">:</span>
+    <span class="n">gateway_order_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span>
+    <span class="n">currency</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span>
+
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">PaymentResult</span><span class="p">:</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">gateway_payment_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">gateway_order_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span>
+    <span class="n">currency</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">raw_response</span><span class="p">:</span> <span class="nb">dict</span>
+
+
+<span class="k">class</span> <span class="nc">PaymentGateway</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">create_order</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span><span class="p">,</span> <span class="n">currency</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PaymentOrder</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">verify_signature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">signature</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">fetch_payment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payment_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PaymentResult</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">refund</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payment_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">pass</span>
+</code></pre></div>
+
+<p>Both your Razorpay and Stripe implementations inherit from this. Your business logic calls <code>gateway.create_order()</code> and never imports <code>razorpay</code> directly. When you add a third gateway, nothing else changes.</p>
+<hr />
+<h2 id="webhooks-what-the-docs-do-not-tell-you">Webhooks: What the Docs Do Not Tell You<a class="headerlink" href="#webhooks-what-the-docs-do-not-tell-you" title="Permanent link">&para;</a></h2>
+<p>Every payment gateway sends webhooks. Razorpay retries up to 5 times over 24 hours. Stripe retries for 3 days. If your webhook handler is not idempotent, you will process the same payment event multiple times.</p>
+<p>Here is what that looks like in a real database model:</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># payments/models.py</span>
+<span class="kn">from</span> <span class="nn">django.db</span> <span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span> <span class="nn">django.utils</span> <span class="kn">import</span> <span class="n">timezone</span>
+
+
+<span class="k">class</span> <span class="nc">WebhookEvent</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+    <span class="n">GATEWAY_CHOICES</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s1">&#39;razorpay&#39;</span><span class="p">,</span> <span class="s1">&#39;Razorpay&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;stripe&#39;</span><span class="p">,</span> <span class="s1">&#39;Stripe&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;cashfree&#39;</span><span class="p">,</span> <span class="s1">&#39;Cashfree&#39;</span><span class="p">),</span>
+    <span class="p">]</span>
+    <span class="n">STATUS_CHOICES</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s1">&#39;pending&#39;</span><span class="p">,</span> <span class="s1">&#39;Pending&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;processing&#39;</span><span class="p">,</span> <span class="s1">&#39;Processing&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;processed&#39;</span><span class="p">,</span> <span class="s1">&#39;Processed&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;failed&#39;</span><span class="p">,</span> <span class="s1">&#39;Failed&#39;</span><span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="n">event_id</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">255</span><span class="p">)</span>
+    <span class="n">gateway</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="n">GATEWAY_CHOICES</span><span class="p">)</span>
+    <span class="n">event_type</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">JSONField</span><span class="p">()</span>
+    <span class="n">raw_body</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">TextField</span><span class="p">()</span>  <span class="c1"># store raw bytes as text for signature re-verification</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="n">STATUS_CHOICES</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;pending&#39;</span><span class="p">)</span>
+    <span class="n">processed_at</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">blank</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">error_message</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">TextField</span><span class="p">(</span><span class="n">blank</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">created_at</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">(</span><span class="n">auto_now_add</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">class</span> <span class="nc">Meta</span><span class="p">:</span>
+        <span class="n">unique_together</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;event_id&#39;</span><span class="p">,</span> <span class="s1">&#39;gateway&#39;</span><span class="p">)]</span>
+        <span class="n">indexes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">models</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;gateway&#39;</span><span class="p">,</span> <span class="s1">&#39;status&#39;</span><span class="p">]),</span>
+            <span class="n">models</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;event_id&#39;</span><span class="p">,</span> <span class="s1">&#39;gateway&#39;</span><span class="p">]),</span>
+        <span class="p">]</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">gateway</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">event_id</span><span class="si">}</span><span class="s2"> [</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="si">}</span><span class="s2">]&quot;</span>
+</code></pre></div>
+
+<p>The <code>unique_together</code> on <code>(event_id, gateway)</code> is your database-level idempotency guard. Even if your application code has a race condition, the DB constraint prevents duplicate processing.</p>
+<p>The <code>raw_body</code> field is important. You need the raw request body, not the parsed JSON, for signature verification. More on this below.</p>
+<hr />
+<h2 id="signature-verification-do-not-skip-this">Signature Verification: Do Not Skip This<a class="headerlink" href="#signature-verification-do-not-skip-this" title="Permanent link">&para;</a></h2>
+<p>Signature verification is non-negotiable. Without it, anyone on the internet can POST a fake <code>payment.captured</code> event to your webhook endpoint and credit an account without any actual payment.</p>
+<p>Both Razorpay and Stripe sign their webhook payloads using HMAC-SHA256. The verification differs slightly between gateways.</p>
+<p><strong>Razorpay:</strong></p>
+<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">hmac</span>
+<span class="kn">import</span> <span class="nn">hashlib</span>
+
+
+<span class="k">def</span> <span class="nf">verify_razorpay_signature</span><span class="p">(</span><span class="n">webhook_body</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">signature</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">secret</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">expected</span> <span class="o">=</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span>
+        <span class="n">secret</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+        <span class="n">webhook_body</span><span class="p">,</span>
+        <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">hmac</span><span class="o">.</span><span class="n">compare_digest</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="n">signature</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Razorpay sends the signature in the <code>X-Razorpay-Signature</code> header. The body must be the raw bytes from the request, not the re-serialized JSON. This is why you store <code>raw_body</code> on the model.</p>
+<p><strong>Stripe:</strong></p>
+<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">stripe</span>
+<span class="kn">from</span> <span class="nn">django.conf</span> <span class="kn">import</span> <span class="n">settings</span>
+
+
+<span class="k">def</span> <span class="nf">verify_stripe_signature</span><span class="p">(</span><span class="n">webhook_body</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">signature</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">stripe</span><span class="o">.</span><span class="n">Event</span><span class="p">:</span>
+    <span class="c1"># Stripe&#39;s SDK handles timestamp tolerance (prevents replay attacks)</span>
+    <span class="k">return</span> <span class="n">stripe</span><span class="o">.</span><span class="n">Webhook</span><span class="o">.</span><span class="n">construct_event</span><span class="p">(</span>
+        <span class="n">webhook_body</span><span class="p">,</span>
+        <span class="n">signature</span><span class="p">,</span>
+        <span class="n">settings</span><span class="o">.</span><span class="n">STRIPE_WEBHOOK_SECRET</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p>Stripe&rsquo;s verification also includes a timestamp tolerance check (default 300 seconds) which protects against replay attacks. Razorpay does not do this out of the box, so be aware.</p>
+<p><strong>The webhook view, with verification baked in:</strong></p>
+<div class="code-block"><pre><span></span><code><span class="c1"># payments/views.py</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">django.views.decorators.csrf</span> <span class="kn">import</span> <span class="n">csrf_exempt</span>
+<span class="kn">from</span> <span class="nn">django.views.decorators.http</span> <span class="kn">import</span> <span class="n">require_POST</span>
+<span class="kn">from</span> <span class="nn">django.http</span> <span class="kn">import</span> <span class="n">HttpResponse</span><span class="p">,</span> <span class="n">HttpResponseBadRequest</span>
+<span class="kn">from</span> <span class="nn">.models</span> <span class="kn">import</span> <span class="n">WebhookEvent</span>
+<span class="kn">from</span> <span class="nn">.tasks</span> <span class="kn">import</span> <span class="n">process_webhook_event</span>
+
+
+<span class="nd">@csrf_exempt</span>
+<span class="nd">@require_POST</span>
+<span class="k">def</span> <span class="nf">razorpay_webhook</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">signature</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;X-Razorpay-Signature&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">raw_body</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">body</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">verify_razorpay_signature</span><span class="p">(</span><span class="n">raw_body</span><span class="p">,</span> <span class="n">signature</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">RAZORPAY_WEBHOOK_SECRET</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">HttpResponseBadRequest</span><span class="p">(</span><span class="s2">&quot;Invalid signature&quot;</span><span class="p">)</span>
+
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw_body</span><span class="p">)</span>
+    <span class="n">event_id</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;payload&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;payment&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;entity&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">event_type</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;event&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+    <span class="n">event</span><span class="p">,</span> <span class="n">created</span> <span class="o">=</span> <span class="n">WebhookEvent</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">(</span>
+        <span class="n">event_id</span><span class="o">=</span><span class="n">event_id</span><span class="p">,</span>
+        <span class="n">gateway</span><span class="o">=</span><span class="s1">&#39;razorpay&#39;</span><span class="p">,</span>
+        <span class="n">defaults</span><span class="o">=</span><span class="p">{</span>
+            <span class="s1">&#39;event_type&#39;</span><span class="p">:</span> <span class="n">event_type</span><span class="p">,</span>
+            <span class="s1">&#39;payload&#39;</span><span class="p">:</span> <span class="n">payload</span><span class="p">,</span>
+            <span class="s1">&#39;raw_body&#39;</span><span class="p">:</span> <span class="n">raw_body</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">created</span> <span class="ow">and</span> <span class="n">event</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;processed&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;Already processed&quot;</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
+
+    <span class="c1"># Hand off to async immediately. Never process inline.</span>
+    <span class="n">process_webhook_event</span><span class="o">.</span><span class="n">delay</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;OK&quot;</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Note the <code>get_or_create</code> pattern. This is your application-level idempotency check before even hitting Celery. Return 200 for already-processed events because gateways interpret anything other than 200 as a failure and will retry.</p>
+<hr />
+<h2 id="async-processing-why-you-must-use-celery-for-payments">Async Processing: Why You Must Use Celery for Payments<a class="headerlink" href="#async-processing-why-you-must-use-celery-for-payments" title="Permanent link">&para;</a></h2>
+<p>I have seen payment reconciliation done synchronously in webhook handlers. It works until it does not. A slow database query, a downstream API call, or a transient network error causes the handler to time out. The gateway retries. You process twice.</p>
+<p>Move all payment processing off the request-response cycle. Use Celery with Redis as the broker.</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># payments/tasks.py</span>
+<span class="kn">from</span> <span class="nn">celery</span> <span class="kn">import</span> <span class="n">shared_task</span>
+<span class="kn">from</span> <span class="nn">django.db</span> <span class="kn">import</span> <span class="n">transaction</span>
+<span class="kn">from</span> <span class="nn">django.utils</span> <span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span> <span class="nn">.models</span> <span class="kn">import</span> <span class="n">WebhookEvent</span><span class="p">,</span> <span class="n">Payment</span>
+
+
+<span class="nd">@shared_task</span><span class="p">(</span>
+    <span class="n">bind</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">max_retries</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="n">default_retry_delay</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+    <span class="n">autoretry_for</span><span class="o">=</span><span class="p">(</span><span class="ne">Exception</span><span class="p">,),</span>
+    <span class="n">retry_backoff</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">retry_backoff_max</span><span class="o">=</span><span class="mi">600</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">def</span> <span class="nf">process_webhook_event</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="n">WebhookEvent</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">select_for_update</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">event_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;processed&#39;</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="n">event</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;processing&#39;</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">])</span>
+
+        <span class="k">with</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span><span class="p">():</span>
+            <span class="n">_handle_event</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+
+        <span class="n">event</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;processed&#39;</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">processed_at</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;processed_at&#39;</span><span class="p">])</span>
+
+    <span class="k">except</span> <span class="n">WebhookEvent</span><span class="o">.</span><span class="n">DoesNotExist</span><span class="p">:</span>
+        <span class="c1"># Not worth retrying</span>
+        <span class="k">return</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;failed&#39;</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">error_message</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>
+        <span class="n">event</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;error_message&#39;</span><span class="p">])</span>
+        <span class="k">raise</span> <span class="bp">self</span><span class="o">.</span><span class="n">retry</span><span class="p">(</span><span class="n">exc</span><span class="o">=</span><span class="n">exc</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_handle_event</span><span class="p">(</span><span class="n">event</span><span class="p">:</span> <span class="n">WebhookEvent</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">event_type</span> <span class="o">==</span> <span class="s1">&#39;payment.captured&#39;</span><span class="p">:</span>
+        <span class="n">_handle_payment_captured</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">event</span><span class="o">.</span><span class="n">event_type</span> <span class="o">==</span> <span class="s1">&#39;payment.failed&#39;</span><span class="p">:</span>
+        <span class="n">_handle_payment_failed</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">event</span><span class="o">.</span><span class="n">event_type</span> <span class="o">==</span> <span class="s1">&#39;refund.processed&#39;</span><span class="p">:</span>
+        <span class="n">_handle_refund</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_handle_payment_captured</span><span class="p">(</span><span class="n">event</span><span class="p">:</span> <span class="n">WebhookEvent</span><span class="p">):</span>
+    <span class="n">gateway_payment_id</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">payload</span><span class="p">[</span><span class="s1">&#39;payload&#39;</span><span class="p">][</span><span class="s1">&#39;payment&#39;</span><span class="p">][</span><span class="s1">&#39;entity&#39;</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">amount</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">payload</span><span class="p">[</span><span class="s1">&#39;payload&#39;</span><span class="p">][</span><span class="s1">&#39;payment&#39;</span><span class="p">][</span><span class="s1">&#39;entity&#39;</span><span class="p">][</span><span class="s1">&#39;amount&#39;</span><span class="p">]</span>
+
+    <span class="n">payment</span> <span class="o">=</span> <span class="n">Payment</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">select_for_update</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+        <span class="n">gateway_payment_id</span><span class="o">=</span><span class="n">gateway_payment_id</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;captured&#39;</span><span class="p">:</span>
+        <span class="k">return</span>  <span class="c1"># second line of defense against duplicates</span>
+
+    <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;captured&#39;</span>
+    <span class="n">payment</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;updated_at&#39;</span><span class="p">])</span>
+
+    <span class="c1"># trigger downstream: fulfill order, send confirmation, etc.</span>
+    <span class="n">fulfill_order</span><span class="o">.</span><span class="n">delay</span><span class="p">(</span><span class="n">payment</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+</code></pre></div>
+
+<p>A few important details here:</p>
+<p><code>select_for_update()</code> on the Payment object prevents two concurrent Celery workers from processing the same payment simultaneously. This is the database-level lock.</p>
+<p><code>transaction.atomic()</code> wraps the entire business logic. If <code>fulfill_order.delay()</code> fails after updating <code>payment.status</code>, the whole thing rolls back and Celery retries from a clean state.</p>
+<p><code>retry_backoff=True</code> gives you exponential backoff: 60s, 120s, 240s, 480s, 600s. Payment failures are almost always transient (network hiccups, DB overload). You want retries, but not hammering every second.</p>
+<hr />
+<h2 id="reconciliation-the-part-nobody-builds">Reconciliation: The Part Nobody Builds<a class="headerlink" href="#reconciliation-the-part-nobody-builds" title="Permanent link">&para;</a></h2>
+<p>Webhooks are best-effort. They can fail silently, get lost in a network partition, or simply not arrive. You cannot rely on webhooks as your only source of truth.</p>
+<p>Build a reconciliation job that runs on a schedule and cross-checks your database against the gateway&rsquo;s records.</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># payments/management/commands/reconcile_payments.py</span>
+<span class="kn">from</span> <span class="nn">django.core.management.base</span> <span class="kn">import</span> <span class="n">BaseCommand</span>
+<span class="kn">from</span> <span class="nn">django.utils</span> <span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">timedelta</span>
+<span class="kn">import</span> <span class="nn">razorpay</span>
+<span class="kn">from</span> <span class="nn">payments.models</span> <span class="kn">import</span> <span class="n">Payment</span>
+
+
+<span class="k">class</span> <span class="nc">Command</span><span class="p">(</span><span class="n">BaseCommand</span><span class="p">):</span>
+    <span class="n">help</span> <span class="o">=</span> <span class="s2">&quot;Reconcile pending payments against Razorpay&quot;</span>
+
+    <span class="k">def</span> <span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">razorpay</span><span class="o">.</span><span class="n">Client</span><span class="p">(</span>
+            <span class="n">auth</span><span class="o">=</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">RAZORPAY_KEY_ID</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">RAZORPAY_KEY_SECRET</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Find payments that have been pending for more than 15 minutes</span>
+        <span class="n">cutoff</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">timedelta</span><span class="p">(</span><span class="n">minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+        <span class="n">pending</span> <span class="o">=</span> <span class="n">Payment</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">status</span><span class="o">=</span><span class="s1">&#39;pending&#39;</span><span class="p">,</span>
+            <span class="n">gateway</span><span class="o">=</span><span class="s1">&#39;razorpay&#39;</span><span class="p">,</span>
+            <span class="n">created_at__lt</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">select_for_update</span><span class="p">()</span>
+
+        <span class="n">reconciled</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">payment</span> <span class="ow">in</span> <span class="n">pending</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">gateway_payment</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">payment</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">payment</span><span class="o">.</span><span class="n">gateway_payment_id</span><span class="p">)</span>
+                <span class="n">gateway_status</span> <span class="o">=</span> <span class="n">gateway_payment</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">]</span>
+
+                <span class="k">if</span> <span class="n">gateway_status</span> <span class="o">==</span> <span class="s1">&#39;captured&#39;</span> <span class="ow">and</span> <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="s1">&#39;captured&#39;</span><span class="p">:</span>
+                    <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;captured&#39;</span>
+                    <span class="n">payment</span><span class="o">.</span><span class="n">reconciled_at</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+                    <span class="n">payment</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;reconciled_at&#39;</span><span class="p">])</span>
+                    <span class="n">fulfill_order</span><span class="o">.</span><span class="n">delay</span><span class="p">(</span><span class="n">payment</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+                    <span class="n">reconciled</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="k">elif</span> <span class="n">gateway_status</span> <span class="o">==</span> <span class="s1">&#39;failed&#39;</span> <span class="ow">and</span> <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="s1">&#39;failed&#39;</span><span class="p">:</span>
+                    <span class="n">payment</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s1">&#39;failed&#39;</span>
+                    <span class="n">payment</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">])</span>
+
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to reconcile </span><span class="si">{</span><span class="n">payment</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reconciled </span><span class="si">{</span><span class="n">reconciled</span><span class="si">}</span><span class="s2"> payments&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Run this with Celery Beat every 15 minutes:</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># celery.py (beat schedule)</span>
+<span class="n">CELERY_BEAT_SCHEDULE</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;reconcile-payments&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;task&#39;</span><span class="p">:</span> <span class="s1">&#39;payments.tasks.run_reconciliation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;schedule&#39;</span><span class="p">:</span> <span class="mi">900</span><span class="p">,</span>  <span class="c1"># 15 minutes</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>This job has caught real money in production. Webhooks that never arrived due to a server restart. Payments that were captured on the gateway side but the webhook handler crashed before writing to the DB. Without reconciliation, those transactions would have sat as &ldquo;pending&rdquo; forever and no one would have known.</p>
+<hr />
+<h2 id="production-checklist">Production Checklist<a class="headerlink" href="#production-checklist" title="Permanent link">&para;</a></h2>
+<p>Before any payment integration goes live, verify these:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Webhook signature verification on every request</td>
+<td>Prevents fake event injection</td>
+</tr>
+<tr>
+<td><code>unique_together</code> on <code>(event_id, gateway)</code></td>
+<td>Database-level idempotency</td>
+</tr>
+<tr>
+<td><code>select_for_update()</code> on payment objects</td>
+<td>Prevents race conditions in concurrent workers</td>
+</tr>
+<tr>
+<td><code>transaction.atomic()</code> around business logic</td>
+<td>Rollback on partial failure</td>
+</tr>
+<tr>
+<td>Raw body stored before JSON parsing</td>
+<td>Required for accurate signature re-verification</td>
+</tr>
+<tr>
+<td>Celery retry with exponential backoff</td>
+<td>Handles transient failures gracefully</td>
+</tr>
+<tr>
+<td>Reconciliation job running on schedule</td>
+<td>Catches missed webhooks</td>
+</tr>
+<tr>
+<td>Return 200 for duplicate webhook events</td>
+<td>Prevents unnecessary gateway retries</td>
+</tr>
+<tr>
+<td>Separate Celery queues for payment processing</td>
+<td>Isolates payment workload from other tasks</td>
+</tr>
+<tr>
+<td>Alert on Celery retry exhaustion</td>
+<td>These are real money events, not log noise</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="one-thing-most-tutorials-skip">One Thing Most Tutorials Skip<a class="headerlink" href="#one-thing-most-tutorials-skip" title="Permanent link">&para;</a></h2>
+<p>The <code>raw_body</code> storage issue comes up constantly. When Django parses <code>request.body</code> as JSON and you later try to re-serialize it for signature verification, you get a different byte string. The HMAC will not match.</p>
+<p>Always read <code>request.body</code> before any JSON parsing and store the original bytes. Do not decode, do not re-encode. Just store it.</p>
+<p>This single issue has caused hours of debugging for developers I have worked with. The gateway signature check fails, the team thinks it is a secret key mismatch, they rotate keys, nothing changes. The bug was always the re-serialized body.</p>
+<hr />
+<h2 id="closing-thoughts">Closing Thoughts<a class="headerlink" href="#closing-thoughts" title="Permanent link">&para;</a></h2>
+<p>Payment integrations are not complex if you approach them with the right mental model. Treat every webhook as potentially duplicate. Treat every payment status update as a concurrency problem. Never trust webhooks alone for reconciliation.</p>
+<p>The async architecture via Celery, the idempotency via <code>get_or_create</code> and <code>select_for_update</code>, and the reconciliation job are the three things that separate a payment integration that works in a demo from one that works in production at scale.</p>
+<p>The code patterns here come from running PlusGold at Paytm and building the Synapse Conclave payment system. Both handled real money. Both are still running. The patterns hold up.</p>
+  </article>
+</div>
+
+<script>
+  const bar = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const scrolled = window.scrollY;
+    const total = document.body.scrollHeight - window.innerHeight;
+    bar.style.width = (scrolled / total * 100) + '%';
+  });
+</script>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      Written by <a href="https://aniketmaithani.net">Aniket Maithani</a> — 
+      Engineering Leader &amp; Fintech Consultant · India
+      <br><br>
+      Built with a Python script and raw HTML · No framework required
+    </p>
+  </div>
+</footer>
+</body>
+</html>
