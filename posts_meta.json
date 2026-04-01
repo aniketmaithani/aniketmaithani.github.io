@@ -42,6 +42,26 @@
     "source_file": "/Users/aniketmaithani/blogger/posts/cloudhsm-zk-exposure.md"
   },
   {
+    "slug": "reflection-on-my-tech-journey",
+    "title": "13 Years, 30+ Engineers, One CTO Role: The Career Mistakes I Would Make Again",
+    "date": "2026-02-07",
+    "date_display": "February 07, 2026",
+    "date_iso": "2026-02-07T00:00:00",
+    "author": "Aniket Maithani",
+    "tags": [
+      "career",
+      "leadership",
+      "engineering",
+      "startup",
+      "fintech",
+      "cto"
+    ],
+    "description": "I said no to FAANG, took a pay cut to join a startup, and spent six months 'unemployed' after an acquisition. Here is what I actually learned from each of those decisions.",
+    "reading_time": 7,
+    "cover_image": "",
+    "source_file": "/Users/aniketmaithani/blogger/posts/reflection-on-my-tech-journey.md"
+  },
+  {
     "slug": "how-nginx-handles-concurrent-connections",
     "title": "How NGINX Handles Hundreds of Thousands of Concurrent Connections",
     "date": "2026-01-12",
