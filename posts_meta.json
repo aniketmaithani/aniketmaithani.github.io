@@ -18,7 +18,7 @@
     "description": "Most Django payment integrations handle the happy path well. This post covers what actually breaks in production: webhook idempotency, signature verification, and async reconciliation.",
     "reading_time": 10,
     "cover_image": "",
-    "source_file": "posts/implementing-payment-gateway-webhook.md"
+    "source_file": "/Users/aniketmaithani/blogger/posts/implementing-payment-gateway-webhook.md"
   },
   {
     "slug": "_template",
