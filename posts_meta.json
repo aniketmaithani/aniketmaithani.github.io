@@ -1,5 +1,26 @@
 [
   {
+    "slug": "implementing-payment-gateway-webhook",
+    "title": "Django Payment Gateways: Webhooks, Idempotency, and Async Recon Done Right",
+    "date": "2025-08-01",
+    "date_display": "August 01, 2025",
+    "date_iso": "2025-08-01T00:00:00",
+    "author": "Aniket Maithani",
+    "tags": [
+      "django",
+      "payments",
+      "razorpay",
+      "stripe",
+      "fintech",
+      "celery",
+      "security"
+    ],
+    "description": "Most Django payment integrations handle the happy path well. This post covers what actually breaks in production: webhook idempotency, signature verification, and async reconciliation.",
+    "reading_time": 10,
+    "cover_image": "",
+    "source_file": "posts/implementing-payment-gateway-webhook.md"
+  },
+  {
     "slug": "_template",
     "title": "Your Post Title Here",
     "date": "2025-06-01",
