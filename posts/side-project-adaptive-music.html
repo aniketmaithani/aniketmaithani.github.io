@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 + mmWave Radar: Privacy-First People Counting and Adaptive Music for Retail — aniketmaithani.net</title>
+  <meta name="description" content="How I built a crowd-adaptive music system for retail using an ESP32, an RD-03E mmWave radar, a Flask state API, and a mood engine that maps crowd density to BPM and genre, without a single camera or microphone.">
+  <meta property="og:title" content="ESP32 + mmWave Radar: Privacy-First People Counting and Adaptive Music for Retail — aniketmaithani.net">
+  <meta property="og:description" content="How I built a crowd-adaptive music system for retail using an ESP32, an RD-03E mmWave radar, a Flask state API, and a mood engine that maps crowd density to BPM and genre, without a single camera or microphone.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+  <style>
+
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #fafaf8;
+  --surface:     #ffffff;
+  --surface-2:   #f5f5f0;
+  --border:      #e8e8e4;
+  --text:        #1d1d1f;
+  --text-2:      #6e6e73;
+  --text-3:      #aeaeb2;
+  --accent:      #0071e3;
+  --accent-2:    #00b4d8;
+  --tag-bg:      #f0f0eb;
+  --tag-text:    #3a3a3c;
+  --code-bg:     #1e1e2e;
+  --code-text:   #cdd6f4;
+  --radius:      12px;
+  --radius-sm:   6px;
+  --font-sans:   'Newsreader', Georgia, serif;
+  --font-ui:     -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono:   'JetBrains Mono', 'SF Mono', monospace;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow:      0 4px 24px rgba(0,0,0,.08);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,.1);
+  --max-w:       680px;
+  --max-w-wide:  1100px;
+  --transition:  0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 300;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Navigation ── */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(250,250,248,.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand {
+  font-family: var(--font-ui);
+  font-size: 15px; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  letter-spacing: -0.3px;
+}
+.nav-brand span { color: var(--accent); }
+.nav-links { display: flex; gap: 8px; }
+.nav-links a {
+  font-family: var(--font-ui);
+  font-size: 13px; font-weight: 400;
+  color: var(--text-2); text-decoration: none;
+  padding: 5px 12px; border-radius: 20px;
+  transition: all var(--transition);
+}
+.nav-links a:hover { background: var(--surface-2); color: var(--text); }
+
+/* ── Hero ── */
+.hero {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 80px 24px 60px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-label {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 16px;
+}
+.hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 300; line-height: 1.1;
+  letter-spacing: -1.5px; color: var(--text);
+  max-width: 600px;
+}
+.hero h1 em { font-style: italic; color: var(--text-2); }
+.hero p {
+  font-family: var(--font-ui);
+  font-size: 15px; color: var(--text-2);
+  margin-top: 16px; max-width: 440px;
+  line-height: 1.6;
+}
+
+/* ── Tag filter bar ── */
+.filter-bar {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 24px 24px 0;
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: center;
+}
+.filter-label {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  font-weight: 500; margin-right: 4px;
+}
+.filter-tag {
+  font-family: var(--font-ui);
+  font-size: 12px; font-weight: 500;
+  padding: 5px 14px; border-radius: 20px;
+  background: var(--tag-bg); color: var(--tag-text);
+  border: 1px solid transparent;
+  cursor: pointer; transition: all var(--transition);
+  text-decoration: none;
+}
+.filter-tag:hover, .filter-tag.active {
+  background: var(--text); color: var(--bg);
+}
+
+/* ── Post grid ── */
+.posts-section {
+  max-width: var(--max-w-wide);
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+.posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2px;
+}
+.post-card {
+  background: var(--surface);
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  transition: all var(--transition);
+  text-decoration: none; color: inherit;
+  display: block; position: relative;
+  overflow: hidden;
+}
+.post-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 3px; height: 0;
+  background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+  transition: height var(--transition);
+}
+.post-card:hover::before { height: 100%; }
+.post-card:hover { z-index: 1; box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+
+.card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-tag {
+  font-family: var(--font-ui);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--accent); padding: 3px 0;
+}
+.card-title {
+  font-size: 18px; font-weight: 400;
+  line-height: 1.35; letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 10px;
+}
+.card-desc {
+  font-family: var(--font-ui);
+  font-size: 13px; color: var(--text-2);
+  line-height: 1.55; margin-bottom: 20px;
+}
+.card-meta {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+}
+.card-meta .dot { width: 3px; height: 3px; background: var(--border); border-radius: 50%; }
+
+/* ── Post page ── */
+.post-container {
+  max-width: var(--max-w);
+  margin: 60px auto 100px;
+  padding: 0 24px;
+}
+.post-header { margin-bottom: 48px; }
+.post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.post-tag {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); text-decoration: none;
+  padding: 4px 10px; border-radius: 4px;
+  background: rgba(0,113,227,.06);
+  transition: all var(--transition);
+}
+.post-tag:hover { background: var(--accent); color: white; }
+.post-title {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 400; line-height: 1.15;
+  letter-spacing: -1px; color: var(--text);
+  margin-bottom: 16px;
+}
+.post-meta {
+  display: flex; align-items: center; gap: 16px;
+  font-family: var(--font-ui); font-size: 13px; color: var(--text-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0; margin-top: 20px;
+}
+.post-meta time { font-weight: 500; color: var(--text); }
+.post-meta .sep { color: var(--border); }
+
+/* ── Article content ── */
+.post-body { font-size: 17px; line-height: 1.75; }
+.post-body h2 {
+  font-size: 24px; font-weight: 400;
+  letter-spacing: -0.5px;
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.post-body h3 {
+  font-size: 19px; font-weight: 400;
+  margin: 36px 0 12px; color: var(--text);
+}
+.post-body p { margin-bottom: 20px; color: var(--text); }
+.post-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.post-body a:hover { text-decoration: none; }
+.post-body strong { font-weight: 600; }
+.post-body em { font-style: italic; color: var(--text-2); }
+.post-body ul, .post-body ol { margin: 0 0 20px 24px; }
+.post-body li { margin-bottom: 6px; }
+
+/* ── Code blocks ── */
+.post-body .code-block, .post-body pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 13.5px; line-height: 1.65;
+  padding: 24px 28px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 28px 0;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.post-body code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-2);
+  color: #e06c75;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.post-body pre code {
+  background: transparent; color: inherit; padding: 0; border-radius: 0;
+}
+
+/* ── Blockquote ── */
+.post-body blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 28px 0; padding: 16px 24px;
+  background: rgba(0,113,227,.04);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: italic; color: var(--text-2);
+}
+
+/* ── Back link ── */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-ui); font-size: 13px;
+  color: var(--text-2); text-decoration: none;
+  margin-bottom: 48px;
+  transition: color var(--transition);
+}
+.back-link:hover { color: var(--text); }
+.back-link svg { width: 14px; height: 14px; }
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3);
+  letter-spacing: 0.2px;
+}
+footer a { color: var(--text-2); text-decoration: none; }
+footer a:hover { color: var(--text); }
+.footer-inner { max-width: var(--max-w-wide); margin: 0 auto; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 80px 24px;
+  font-family: var(--font-ui); color: var(--text-3);
+}
+.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-2); }
+
+/* ── Tags page ── */
+.tags-section {
+  max-width: var(--max-w-wide);
+  margin: 60px auto;
+  padding: 0 24px 80px;
+}
+.tags-section h2 {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 32px;
+}
+.tag-group { margin-bottom: 48px; }
+.tag-group-name {
+  font-family: var(--font-ui);
+  font-size: 20px; font-weight: 300;
+  letter-spacing: -0.3px;
+  color: var(--text); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.tag-count {
+  font-size: 12px; font-weight: 600;
+  color: var(--accent);
+  background: rgba(0,113,227,.08);
+  padding: 3px 8px; border-radius: 10px;
+}
+.tag-posts { display: flex; flex-direction: column; gap: 2px; }
+.tag-post-link {
+  display: flex; align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-decoration: none; color: var(--text);
+  font-size: 15px; transition: all var(--transition);
+  border-radius: 0;
+}
+.tag-post-link:hover { background: var(--surface-2); padding-left: 20px; }
+.tag-post-date {
+  font-family: var(--font-ui);
+  font-size: 12px; color: var(--text-3); flex-shrink: 0;
+}
+
+/* ── Reading progress bar ── */
+.progress-bar {
+  position: fixed; top: 52px; left: 0;
+  height: 2px; width: 0%;
+  background: linear-gradient(to right, var(--accent), var(--accent-2));
+  z-index: 200; transition: width 0.1s linear;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .nav-inner { padding: 0 16px; }
+  .hero { padding: 48px 16px 40px; }
+  .posts-section, .filter-bar, .tags-section { padding-left: 16px; padding-right: 16px; }
+  .posts-grid { grid-template-columns: 1fr; }
+  .post-container { padding: 0 16px; margin-top: 32px; }
+}
+
+
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/index.html" class="nav-brand">aniketmaithani<span>.net</span></a>
+    <div class="nav-links">
+      <a href="/index.html">Writing</a>
+      <a href="/tags.html">Tags</a>
+      <a href="https://aniketmaithani.net" target="_blank">Home</a>
+    </div>
+  </div>
+</nav>
+
+<div class="progress-bar" id="progress"></div>
+<div class="post-container">
+  <a class="back-link" href="../index.html">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M10 12L6 8l4-4"/>
+    </svg>
+    All posts
+  </a>
+  <header class="post-header">
+    <div class="post-tags"><a class="post-tag" href="../tags.html#iot">#iot</a><a class="post-tag" href="../tags.html#esp32">#esp32</a><a class="post-tag" href="../tags.html#python">#python</a><a class="post-tag" href="../tags.html#flask">#flask</a><a class="post-tag" href="../tags.html#aniket-pet-project">#aniket-pet-project</a><a class="post-tag" href="../tags.html#hardware">#hardware</a><a class="post-tag" href="../tags.html#retail-tech">#retail-tech</a></div>
+    <h1 class="post-title">ESP32 + mmWave Radar: Privacy-First People Counting and Adaptive Music for Retail</h1>
+    <div class="post-meta">
+      <time datetime="2026-03-28T00:00:00">March 28, 2026</time>
+      <span class="sep">·</span>
+      <span>Aniket Maithani</span>
+      <span class="sep">·</span>
+      <span>14 min read</span>
+    </div>
+  </header>
+  <article class="post-body">
+    <h2 id="the-brief">The Brief<a class="headerlink" href="#the-brief" title="Permanent link">&para;</a></h2>
+<p>The problem is straightforward. A retail store or cafe wants the music to feel right for the crowd inside at any given moment. Empty store at 10am needs something calm and ambient. Same store at 6pm on a Friday with twenty people needs something with energy.</p>
+<p>The naive solution is a camera with computer vision running a headcount. That solution has three problems. It captures identifiable video, which means GDPR compliance, consent signage, data retention policies, and customer unease. It requires a GPU or a cloud API to run inference, which adds latency and ongoing cost. And it fails in bad lighting.</p>
+<p>The better solution is a 24GHz mmWave radar sensor. It detects blobs, not faces. It knows something is there, moving, at a certain distance. It cannot tell you who. No PII, no consent requirement, no privacy architecture needed.</p>
+<p>This post covers the full implementation: ESP32 firmware that reads the RD-03E radar and POSTs state to a local Flask API, a <code>catalogue.json</code> mood engine that maps crowd density to music parameters, and a PySide6 player that adapts in real time. The entire stack runs on a single Raspberry Pi or a cheap laptop inside the venue. No cloud dependency.</p>
+<hr />
+<h2 id="why-mmwave-over-every-other-option">Why mmWave Over Every Other Option<a class="headerlink" href="#why-mmwave-over-every-other-option" title="Permanent link">&para;</a></h2>
+<p>Before getting into the implementation, it is worth understanding why mmWave is the right sensor for this use case.</p>
+<p>A 24GHz mmWave radar emits radio waves in the millimeter-wave spectrum and measures the reflection. From the time-of-flight and Doppler shift of the reflected signal it can extract presence (is something there), distance (how far), and velocity (how fast it is moving). Some sensors in this class also output X/Y coordinates for tracked targets.</p>
+<p>The critical property is that it detects physical presence through micro-motion: breathing, heartbeat, the slight sway of a standing person. It does not require visible movement. A person standing still at a counter is detected reliably. A person sitting at a cafe table is detected reliably.</p>
+<p>Compared to the alternatives:</p>
+<table>
+<thead>
+<tr>
+<th>Sensor</th>
+<th>Counts People</th>
+<th>Device-Independent</th>
+<th>Works When Still</th>
+<th>Privacy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mmWave radar</td>
+<td>Partial (density proxy)</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Full</td>
+</tr>
+<tr>
+<td>PIR</td>
+<td>No (presence only)</td>
+<td>Yes</td>
+<td>No</td>
+<td>Full</td>
+</tr>
+<tr>
+<td>Camera + CV</td>
+<td>Yes (accurate)</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>None</td>
+</tr>
+<tr>
+<td>WiFi probe sniff</td>
+<td>Approximate</td>
+<td>No</td>
+<td>Yes</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>Microphone + dB</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Problematic</td>
+</tr>
+<tr>
+<td>IR beam break</td>
+<td>Yes (doorway only)</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Full</td>
+</tr>
+</tbody>
+</table>
+<p>mmWave is the only option that combines all three properties that matter here: no PII, detects still occupants, and gives you a density signal rather than just binary presence.</p>
+<p>The RD-03E (EC Buying, available on Amazon India for around 800 rupees) is a single-zone sensor. It does not track multiple targets individually. What it does give you is presence state, distance to the nearest detected object, and velocity. From those signals, it is possible to build a crowd behaviour fingerprint that serves as a reliable density proxy.</p>
+<hr />
+<h2 id="the-density-problem-one-sensor-no-headcount">The Density Problem: One Sensor, No Headcount<a class="headerlink" href="#the-density-problem-one-sensor-no-headcount" title="Permanent link">&para;</a></h2>
+<p>The RD-03E cannot count people. This needs to be stated clearly because it sets the architecture correctly from the start.</p>
+<p>What it can do is detect the behavioural signatures that different crowd sizes produce. One person walking a straight path produces a smooth distance curve, low variance, low flicker rate. Eight people in the same space produce a chaotic distance signal: the sensor locks onto different people at different moments, the distance jumps, presence flickers as people occlude each other, and occupancy stays consistently high.</p>
+<p>These signals are computable. The firmware collects a rolling window of radar readings and derives four metrics:</p>
+<p><strong>Occupancy percentage:</strong> what fraction of the last N readings had presence detected. A single person walking through briefly produces low occupancy. A crowd lingering produces high occupancy.</p>
+<p><strong>Distance variance:</strong> how wildly the distance value is jumping across the window. One person at a counter produces near-zero variance. Multiple people moving produces high variance as the sensor locks onto different targets.</p>
+<p><strong>Flicker count:</strong> how many times presence toggled on/off within the window. A single person produces near-zero flicker. The edge of a crowd, with people partially in and out of sensor range, produces high flicker.</p>
+<p><strong>Velocity stability:</strong> how consistent the velocity readings are. Calm, single-person movement is smooth. Multiple people moving in different directions produces unstable velocity.</p>
+<p>These four metrics feed a scoring function that outputs a crowd level on a five-point scale: empty, quiet, active, busy, crowded.</p>
+<hr />
+<h2 id="esp32-firmware">ESP32 Firmware<a class="headerlink" href="#esp32-firmware" title="Permanent link">&para;</a></h2>
+<p>The firmware has two jobs. Read the RD-03E via UART and compute the density score. Then POST the result to the Flask API over WiFi every 30 seconds.</p>
+<p>The RD-03E communicates over UART at 256000 baud. The frame format is simple: a header byte <code>0xAA</code>, a state byte (0 for no presence, 1 for moving target, 2 for static target), a distance byte (in tens of centimeters), a speed byte, and a footer byte <code>0x55</code>.</p>
+<div class="code-block"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;WiFi.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;HTTPClient.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;ArduinoJson.h&gt;</span>
+
+<span class="c1">// WiFi credentials</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">WIFI_SSID</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;your-network&quot;</span><span class="p">;</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">WIFI_PASSWORD</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;your-password&quot;</span><span class="p">;</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">API_ENDPOINT</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://192.168.1.100:5000/state&quot;</span><span class="p">;</span>
+
+<span class="c1">// UART2 for radar (TX2=17, RX2=16)</span>
+<span class="n">HardwareSerial</span><span class="w"> </span><span class="nf">RadarSerial</span><span class="p">(</span><span class="mi">2</span><span class="p">);</span>
+
+<span class="c1">// Frame format constants</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0xAA</span><span class="p">;</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">FRAME_FOOTER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x55</span><span class="p">;</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w">     </span><span class="n">FRAME_LEN</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span>
+
+<span class="kt">uint8_t</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">FRAME_LEN</span><span class="p">];</span>
+<span class="kt">int</span><span class="w">     </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">// Behaviour window: 200 samples at ~10 reads/sec = last 20 seconds</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">WIN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">;</span>
+<span class="kt">int</span><span class="w">  </span><span class="n">distWindow</span><span class="p">[</span><span class="n">WIN</span><span class="p">];</span>
+<span class="kt">bool</span><span class="w"> </span><span class="n">presWindow</span><span class="p">[</span><span class="n">WIN</span><span class="p">];</span>
+<span class="kt">int</span><span class="w">  </span><span class="n">winIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">// Distance smoothing buffer</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">HIST</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">distHistory</span><span class="p">[</span><span class="n">HIST</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">histIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">// Post interval</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">POST_INTERVAL_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30000</span><span class="p">;</span>
+<span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">lastPost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">// ── Metric helpers ──────────────────────────────────────────────────────────</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">occupancyPct</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="w"> </span><span class="n">count</span><span class="o">++</span><span class="p">;</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">count</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">distVariance</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">];</span><span class="w"> </span><span class="n">n</span><span class="o">++</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">mean</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">n</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">mean</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">n</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">flickerCount</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">flicks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="n">flicks</span><span class="o">++</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">flicks</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Crowd inference ─────────────────────────────────────────────────────────</span>
+
+<span class="k">struct</span><span class="w"> </span><span class="nc">CrowdReading</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w">        </span><span class="n">score</span><span class="p">;</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">level</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="n">CrowdReading</span><span class="w"> </span><span class="nf">inferCrowd</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">occ</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">occupancyPct</span><span class="p">();</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">var</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">distVariance</span><span class="p">();</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">flicker</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">flickerCount</span><span class="p">();</span>
+
+<span class="w">  </span><span class="c1">// Score is a weighted combination of three signals</span>
+<span class="w">  </span><span class="c1">// Each contributes independently to avoid single-signal noise</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">  </span><span class="c1">// Occupancy contribution (0-40 points)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">80</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">40</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">60</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">28</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">18</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">8</span><span class="p">;</span>
+
+<span class="w">  </span><span class="c1">// Distance variance contribution (0-35 points)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">150</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">35</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">80</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">25</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">14</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">15</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">6</span><span class="p">;</span>
+
+<span class="w">  </span><span class="c1">// Flicker contribution (0-25 points)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">25</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">18</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
+
+<span class="w">  </span><span class="c1">// Map score to level</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">level</span><span class="p">;</span>
+<span class="w">  </span><span class="k">if</span><span class="w">      </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;empty&quot;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;quiet&quot;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">45</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;active&quot;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">70</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;busy&quot;</span><span class="p">;</span>
+<span class="w">  </span><span class="k">else</span><span class="w">                  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;crowded&quot;</span><span class="p">;</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="n">score</span><span class="p">,</span><span class="w"> </span><span class="n">level</span><span class="p">};</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Frame parsing ────────────────────────────────────────────────────────────</span>
+
+<span class="kt">bool</span><span class="w"> </span><span class="nf">parseFrame</span><span class="p">(</span><span class="kt">int</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">&amp;</span><span class="w"> </span><span class="n">speed</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="o">&amp;</span><span class="w"> </span><span class="n">present</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">FRAME_FOOTER</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+
+<span class="w">  </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+<span class="w">  </span><span class="n">present</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">  </span><span class="n">dist</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w">  </span><span class="c1">// convert to cm</span>
+<span class="w">  </span><span class="n">speed</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// ── WiFi setup ───────────────────────────────────────────────────────────────</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">connectWiFi</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">WiFi</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="n">WIFI_SSID</span><span class="p">,</span><span class="w"> </span><span class="n">WIFI_PASSWORD</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">attempts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">WiFi</span><span class="p">.</span><span class="n">status</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">WL_CONNECTED</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">attempts</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">delay</span><span class="p">(</span><span class="mi">500</span><span class="p">);</span>
+<span class="w">    </span><span class="n">attempts</span><span class="o">++</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// ── State POST ───────────────────────────────────────────────────────────────</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">postState</span><span class="p">(</span><span class="n">CrowdReading</span><span class="w"> </span><span class="n">reading</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">WiFi</span><span class="p">.</span><span class="n">status</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">WL_CONNECTED</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">connectWiFi</span><span class="p">();</span>
+<span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="n">HTTPClient</span><span class="w"> </span><span class="n">http</span><span class="p">;</span>
+<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="n">API_ENDPOINT</span><span class="p">);</span>
+<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">addHeader</span><span class="p">(</span><span class="s">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span><span class="p">);</span>
+
+<span class="w">  </span><span class="n">StaticJsonDocument</span><span class="o">&lt;</span><span class="mi">256</span><span class="o">&gt;</span><span class="w"> </span><span class="n">doc</span><span class="p">;</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;level&quot;</span><span class="p">]</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="n">reading</span><span class="p">.</span><span class="n">level</span><span class="p">;</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;score&quot;</span><span class="p">]</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="n">reading</span><span class="p">.</span><span class="n">score</span><span class="p">;</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;occupancy&quot;</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">occupancyPct</span><span class="p">();</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;variance&quot;</span><span class="p">]</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">distVariance</span><span class="p">();</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;flicker&quot;</span><span class="p">]</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">flickerCount</span><span class="p">();</span>
+<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;timestamp&quot;</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">String</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
+<span class="w">  </span><span class="n">serializeJson</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">responseCode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">POST</span><span class="p">(</span><span class="n">body</span><span class="p">);</span>
+<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">end</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="c1">// ── Setup and loop ────────────────────────────────────────────────────────────</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">setup</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">Serial</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="mi">115200</span><span class="p">);</span>
+<span class="w">  </span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="mi">256000</span><span class="p">,</span><span class="w"> </span><span class="n">SERIAL_8N1</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">17</span><span class="p">);</span>
+<span class="w">  </span><span class="n">connectWiFi</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">loop</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// Read bytes from radar, assemble frames</span>
+<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">available</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">byte</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">read</span><span class="p">();</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">byte</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">framePos</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">framePos</span><span class="o">++</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">byte</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">framePos</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">framePos</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">FRAME_LEN</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">framePos</span><span class="o">++</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">byte</span><span class="p">;</span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">framePos</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">FRAME_LEN</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="n">speed</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">bool</span><span class="w"> </span><span class="n">present</span><span class="p">;</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">parseFrame</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="n">speed</span><span class="p">,</span><span class="w"> </span><span class="n">present</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="c1">// Update rolling window</span>
+<span class="w">          </span><span class="n">distWindow</span><span class="p">[</span><span class="n">winIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">present</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">dist</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">          </span><span class="n">presWindow</span><span class="p">[</span><span class="n">winIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">present</span><span class="p">;</span>
+<span class="w">          </span><span class="n">winIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">winIdx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span>
+
+<span class="w">          </span><span class="c1">// Update smoothing buffer</span>
+<span class="w">          </span><span class="n">distHistory</span><span class="p">[</span><span class="n">histIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dist</span><span class="p">;</span>
+<span class="w">          </span><span class="n">histIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">histIdx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">HIST</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="c1">// POST state on interval</span>
+<span class="w">  </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">lastPost</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">POST_INTERVAL_MS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">CrowdReading</span><span class="w"> </span><span class="n">reading</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">inferCrowd</span><span class="p">();</span>
+<span class="w">    </span><span class="n">postState</span><span class="p">(</span><span class="n">reading</span><span class="p">);</span>
+<span class="w">    </span><span class="n">lastPost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">now</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>The 30-second POST interval is a deliberate choice. Music switching on a 30-second delay feels natural in a retail environment. A 5-second interval would cause constant churn. The window of 200 samples at roughly 10 reads per second gives a 20-second behavioural history, which smooths out transient spikes like a single person walking past.</p>
+<hr />
+<h2 id="flask-state-api">Flask State API<a class="headerlink" href="#flask-state-api" title="Permanent link">&para;</a></h2>
+<p>The API is a thin state store. The ESP32 POSTs to it, the player GETs from it. There is no database, no authentication, no queue. State is written to a JSON file on disk so it survives a Flask restart.</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># api.py</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">jsonify</span>
+<span class="kn">from</span> <span class="nn">flask_cors</span> <span class="kn">import</span> <span class="n">CORS</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">CORS</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+
+<span class="n">STATE_FILE</span> <span class="o">=</span> <span class="s2">&quot;state.json&quot;</span>
+
+<span class="n">DEFAULT_STATE</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;level&quot;</span><span class="p">:</span>     <span class="s2">&quot;empty&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;score&quot;</span><span class="p">:</span>     <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">&quot;occupancy&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">&quot;variance&quot;</span><span class="p">:</span>  <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">&quot;flicker&quot;</span><span class="p">:</span>   <span class="mi">0</span><span class="p">,</span>
+    <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="s2">&quot;updated_at&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span> <span class="nf">load_state</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">DEFAULT_STATE</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">save_state</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/state&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;POST&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">update_state</span><span class="p">():</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_json</span><span class="p">(</span><span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;empty body&quot;</span><span class="p">}),</span> <span class="mi">400</span>
+
+    <span class="n">state</span> <span class="o">=</span> <span class="n">load_state</span><span class="p">()</span>
+    <span class="n">state</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+        <span class="s2">&quot;level&quot;</span><span class="p">:</span>     <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;level&quot;</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">]),</span>
+        <span class="s2">&quot;score&quot;</span><span class="p">:</span>     <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]),</span>
+        <span class="s2">&quot;occupancy&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;occupancy&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="s2">&quot;variance&quot;</span><span class="p">:</span>  <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;variance&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="s2">&quot;flicker&quot;</span><span class="p">:</span>   <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;flicker&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;updated_at&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+    <span class="p">})</span>
+    <span class="n">save_state</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">]})</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/state&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GET&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">get_state</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">jsonify</span><span class="p">(</span><span class="n">load_state</span><span class="p">())</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/health&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GET&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">health</span><span class="p">():</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="n">load_state</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span>
+        <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;current_level&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;last_update&quot;</span><span class="p">:</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;updated_at&quot;</span><span class="p">),</span>
+    <span class="p">})</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+<p>This handles a stale sensor gracefully. If the ESP32 has not POSTed for 10 minutes (WiFi drop, power outage), the state file retains the last known level. The player keeps playing the last mood. No crash, no silence, no exception.</p>
+<hr />
+<h2 id="the-music-catalogue">The Music Catalogue<a class="headerlink" href="#the-music-catalogue" title="Permanent link">&para;</a></h2>
+<p>The catalogue is a flat JSON file. Each entry is one track with enough metadata for the mood engine to make decisions.</p>
+<div class="code-block"><pre><span></span><code><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Slow Mornings&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/empty/slow-mornings.mp3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;calm&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Ambient&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">68</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">214</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Third Wave&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/quiet/third-wave.mp3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;calm&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Jazz&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">84</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">198</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Cafe Afternoon&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/active/cafe-afternoon.mp3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bossa Nova&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">104</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">187</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Current Thing&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/busy/current-thing.mp3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hype&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pop&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">124</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">201</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Peak Floor&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/crowded/peak-floor.mp3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hype&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Electronic&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">138</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">193</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+
+<p>The <code>mood</code> field is the key link between the sensor output and the music selection. The mood engine maps crowd level to mood tag, then the player selects from all catalogue entries matching that mood.</p>
+<p>The BPM range by mood:</p>
+<table>
+<thead>
+<tr>
+<th>Mood</th>
+<th>BPM Range</th>
+<th>Typical Genres</th>
+<th>Crowd Level</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>calm</td>
+<td>60-90</td>
+<td>Ambient, Lo-fi, Acoustic</td>
+<td>empty, quiet</td>
+</tr>
+<tr>
+<td>mid</td>
+<td>90-115</td>
+<td>Jazz, Bossa Nova, Indie</td>
+<td>active</td>
+</tr>
+<tr>
+<td>hype</td>
+<td>115-145</td>
+<td>Pop, Electronic, Funk</td>
+<td>busy, crowded</td>
+</tr>
+</tbody>
+</table>
+<p>This range is not arbitrary. Psychological research on music and consumer behaviour consistently shows that slower tempos in low-traffic environments increases dwell time and per-item attention. Faster tempos in high-traffic environments increases throughput and energy. The BPM ranges above are derived from what actually works in retail contexts, not what sounds intuitive.</p>
+<hr />
+<h2 id="the-mood-engine">The Mood Engine<a class="headerlink" href="#the-mood-engine" title="Permanent link">&para;</a></h2>
+<p>The mood engine sits between the state API and the player. It reads the current level from state, maps it to a mood, selects the next track, and decides when to switch.</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># mood_engine.py</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+
+
+<span class="n">LEVEL_TO_MOOD</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;empty&quot;</span><span class="p">:</span>   <span class="s2">&quot;calm&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;quiet&quot;</span><span class="p">:</span>   <span class="s2">&quot;calm&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;active&quot;</span><span class="p">:</span>  <span class="s2">&quot;mid&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;busy&quot;</span><span class="p">:</span>    <span class="s2">&quot;hype&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="s2">&quot;hype&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="c1"># BPM guardrails per mood: never play outside this range regardless of catalogue</span>
+<span class="n">MOOD_BPM_RANGE</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;calm&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">55</span><span class="p">,</span> <span class="mi">92</span><span class="p">),</span>
+    <span class="s2">&quot;mid&quot;</span><span class="p">:</span>  <span class="p">(</span><span class="mi">88</span><span class="p">,</span> <span class="mi">118</span><span class="p">),</span>
+    <span class="s2">&quot;hype&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">112</span><span class="p">,</span> <span class="mi">148</span><span class="p">),</span>
+<span class="p">}</span>
+
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">Track</span><span class="p">:</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">file</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">mood</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">genre</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">bpm</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">energy</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">duration</span><span class="p">:</span> <span class="nb">int</span>
+
+
+<span class="k">class</span> <span class="nc">MoodEngine</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">catalogue_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;catalogue.json&quot;</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">catalogue_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">raw</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Track</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">Track</span><span class="p">(</span><span class="o">**</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">raw</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># avoid immediate repeats</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">level_to_mood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">LEVEL_TO_MOOD</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="s2">&quot;calm&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_next_track</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Track</span><span class="p">]:</span>
+        <span class="n">mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        <span class="n">bpm_min</span><span class="p">,</span> <span class="n">bpm_max</span> <span class="o">=</span> <span class="n">MOOD_BPM_RANGE</span><span class="p">[</span><span class="n">mood</span><span class="p">]</span>
+
+        <span class="c1"># Filter by mood and BPM guardrails</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span>
+            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">mood</span> <span class="o">==</span> <span class="n">mood</span>
+            <span class="ow">and</span> <span class="n">bpm_min</span> <span class="o">&lt;=</span> <span class="n">t</span><span class="o">.</span><span class="n">bpm</span> <span class="o">&lt;=</span> <span class="n">bpm_max</span>
+            <span class="ow">and</span> <span class="n">t</span><span class="o">.</span><span class="n">file</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span>  <span class="c1"># avoid last 3 tracks</span>
+        <span class="p">]</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
+            <span class="c1"># Relax the recency filter if catalogue is small</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span>
+                <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">mood</span> <span class="o">==</span> <span class="n">mood</span> <span class="ow">and</span> <span class="n">bpm_min</span> <span class="o">&lt;=</span> <span class="n">t</span><span class="o">.</span><span class="n">bpm</span> <span class="o">&lt;=</span> <span class="n">bpm_max</span>
+            <span class="p">]</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Weight towards matching energy level more precisely</span>
+        <span class="n">level_energy_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;empty&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;busy&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="mi">5</span>
+        <span class="p">}</span>
+        <span class="n">target_energy</span> <span class="o">=</span> <span class="n">level_energy_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+        <span class="c1"># Sort by proximity to target energy, break ties randomly</span>
+        <span class="n">candidates</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">energy</span> <span class="o">-</span> <span class="n">target_energy</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()))</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">selected</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="n">mood</span>
+        <span class="k">return</span> <span class="n">selected</span>
+
+    <span class="k">def</span> <span class="nf">should_switch_now</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns True if the current crowd level has shifted mood category.</span>
+<span class="sd">        The player uses this to decide whether to crossfade at end of track</span>
+<span class="sd">        or interrupt immediately.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">new_mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">current_level</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_mood</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span>
+</code></pre></div>
+
+<p>The <code>should_switch_now</code> method is important for UX. If the crowd level changes from <code>active</code> to <code>busy</code>, both map to <code>mid</code> and <code>hype</code> respectively. If the mood category changes, the player crossfades immediately. If the level changes within the same mood category (for example, <code>empty</code> to <code>quiet</code>, both <code>calm</code>), the track continues to completion and the next selection reflects the updated level.</p>
+<p>This prevents jarring mid-song transitions caused by brief spikes in crowd activity.</p>
+<hr />
+<h2 id="pyside6-player">PySide6 Player<a class="headerlink" href="#pyside6-player" title="Permanent link">&para;</a></h2>
+<p>The player is a PySide6 desktop application running on whatever machine is inside the venue. It polls the Flask API every 30 seconds, checks whether a mood switch is needed, and handles playback via pygame.</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># player.py (core logic, abbreviated)</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">pygame</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">PySide6.QtWidgets</span> <span class="kn">import</span> <span class="n">QApplication</span><span class="p">,</span> <span class="n">QMainWindow</span><span class="p">,</span> <span class="n">QLabel</span><span class="p">,</span> <span class="n">QPushButton</span>
+<span class="kn">from</span> <span class="nn">PySide6.QtCore</span> <span class="kn">import</span> <span class="n">Qt</span><span class="p">,</span> <span class="n">QTimer</span><span class="p">,</span> <span class="n">Signal</span><span class="p">,</span> <span class="n">QObject</span>
+
+<span class="kn">from</span> <span class="nn">mood_engine</span> <span class="kn">import</span> <span class="n">MoodEngine</span>
+
+<span class="n">API_BASE</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:5000&quot;</span>
+<span class="n">POLL_INTERVAL_MS</span> <span class="o">=</span> <span class="mi">30000</span>
+<span class="n">CROSSFADE_DURATION_MS</span> <span class="o">=</span> <span class="mi">3000</span>
+
+
+<span class="k">class</span> <span class="nc">Signals</span><span class="p">(</span><span class="n">QObject</span><span class="p">):</span>
+    <span class="n">state_updated</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">track_changed</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>   <span class="c1"># title, mood</span>
+    <span class="n">log_message</span>   <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">Aniket</span><span class="o">-</span><span class="n">pet</span><span class="o">-</span><span class="n">projectPlayer</span><span class="p">(</span><span class="n">QMainWindow</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">engine</span> <span class="o">=</span> <span class="n">MoodEngine</span><span class="p">(</span><span class="s2">&quot;catalogue.json&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">signals</span> <span class="o">=</span> <span class="n">Signals</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radar_enabled</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_track</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">frequency</span><span class="o">=</span><span class="mi">44100</span><span class="p">,</span> <span class="n">size</span><span class="o">=-</span><span class="mi">16</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">buffer</span><span class="o">=</span><span class="mi">2048</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_setup_ui</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_connect_signals</span><span class="p">()</span>
+
+        <span class="c1"># Poll timer: fires every 30s when radar engine is active</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span> <span class="o">=</span> <span class="n">QTimer</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">timeout</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_poll_and_adapt</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">toggle_radar_engine</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radar_enabled</span> <span class="o">=</span> <span class="n">enabled</span>
+        <span class="k">if</span> <span class="n">enabled</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">POLL_INTERVAL_MS</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;Radar engine ON&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_poll_and_adapt</span><span class="p">()</span>  <span class="c1"># immediate first check</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;Radar engine OFF&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_poll_and_adapt</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Runs in main thread via QTimer.</span>
+<span class="sd">        Fetches current radar state, decides whether to switch music.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">fetch</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">API_BASE</span><span class="si">}</span><span class="s2">/state&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+                <span class="n">resp</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+                <span class="n">state</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">state_updated</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_switch</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;API error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">fetch</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_maybe_switch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">immediate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">should_switch_now</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">immediate</span><span class="p">:</span>
+            <span class="c1"># Mood category changed: crossfade now</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_crossfade_to_next</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Same mood: queue next track for when current finishes</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">get_busy</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_play_next</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_crossfade_to_next</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">track</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">get_next_track</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">track</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Fade out current</span>
+        <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">fadeout</span><span class="p">(</span><span class="n">CROSSFADE_DURATION_MS</span><span class="p">)</span>
+
+        <span class="c1"># Schedule fade in after crossfade duration</span>
+        <span class="n">QTimer</span><span class="o">.</span><span class="n">singleShot</span><span class="p">(</span><span class="n">CROSSFADE_DURATION_MS</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_and_play</span><span class="p">(</span><span class="n">track</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_load_and_play</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">track</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
+            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">play</span><span class="p">()</span>
+
+            <span class="c1"># Fade in over 2 seconds</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fade_in</span><span class="p">(</span><span class="n">target_volume</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">duration_ms</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">current_track</span> <span class="o">=</span> <span class="n">track</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">track_changed</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">title</span><span class="p">,</span> <span class="n">track</span><span class="o">.</span><span class="n">mood</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Now playing: </span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> [</span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">genre</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">bpm</span><span class="si">}</span><span class="s2"> BPM]&quot;</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Playback error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_fade_in</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target_volume</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="n">steps</span> <span class="o">=</span> <span class="mi">20</span>
+        <span class="n">step_ms</span> <span class="o">=</span> <span class="n">duration_ms</span> <span class="o">//</span> <span class="n">steps</span>
+        <span class="n">step_vol</span> <span class="o">=</span> <span class="n">target_volume</span> <span class="o">/</span> <span class="n">steps</span>
+        <span class="n">current_vol</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+
+        <span class="k">def</span> <span class="nf">step</span><span class="p">():</span>
+            <span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">step_vol</span>
+            <span class="k">if</span> <span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">target_volume</span><span class="p">:</span>
+                <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="n">target_volume</span><span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">QTimer</span><span class="o">.</span><span class="n">singleShot</span><span class="p">(</span><span class="n">step_ms</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
+
+        <span class="n">step</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_play_next</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">track</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">get_next_track</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">track</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_and_play</span><span class="p">(</span><span class="n">track</span><span class="p">)</span>
+</code></pre></div>
+
+<p>The crossfade implementation deserves attention. <code>pygame.mixer.music.fadeout()</code> fades the outgoing track. <code>_fade_in()</code> uses a recursive QTimer chain to increment volume in 20 steps over 2 seconds. The result is a 3-second crossfade: 1 second of overlap where both tracks play at low volume, which sounds intentional rather than abrupt.</p>
+<hr />
+<h2 id="integrating-with-the-aniket-pet-project-ad-server">Integrating With the Aniket-pet-project Ad Server<a class="headerlink" href="#integrating-with-the-aniket-pet-project-ad-server" title="Permanent link">&para;</a></h2>
+<p>For a production deployment inside the Aniket-pet-project infrastructure, the <code>catalogue.json</code> file is replaced by a query against the Aniket-pet-project music library, which stores tracks in Elasticsearch with fields including <code>bpm</code>, <code>genre</code>, <code>energylevel</code>, <code>defined_search_tags</code>, and <code>license</code>.</p>
+<p>The mood engine&rsquo;s <code>get_next_track</code> method can be extended to query Elasticsearch directly:</p>
+<div class="code-block"><pre><span></span><code><span class="kn">from</span> <span class="nn">elasticsearch</span> <span class="kn">import</span> <span class="n">Elasticsearch</span>
+
+<span class="k">class</span> <span class="nc">Aniket</span><span class="o">-</span><span class="n">pet</span><span class="o">-</span><span class="n">projectMoodEngine</span><span class="p">(</span><span class="n">MoodEngine</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">es_host</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;tracks&quot;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">es</span> <span class="o">=</span> <span class="n">Elasticsearch</span><span class="p">([</span><span class="n">es_host</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">get_next_track</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        <span class="n">bpm_min</span><span class="p">,</span> <span class="n">bpm_max</span> <span class="o">=</span> <span class="n">MOOD_BPM_RANGE</span><span class="p">[</span><span class="n">mood</span><span class="p">]</span>
+
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;bool&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;must&quot;</span><span class="p">:</span> <span class="p">[</span>
+                        <span class="p">{</span><span class="s2">&quot;term&quot;</span><span class="p">:</span>  <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}},</span>
+                        <span class="p">{</span><span class="s2">&quot;range&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;bpm&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="n">bpm_min</span><span class="p">,</span> <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="n">bpm_max</span><span class="p">}}},</span>
+                    <span class="p">],</span>
+                    <span class="s2">&quot;must_not&quot;</span><span class="p">:</span> <span class="p">[</span>
+                        <span class="p">{</span><span class="s2">&quot;terms&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;filepath&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">[</span><span class="o">-</span><span class="mi">5</span><span class="p">:]}}</span>
+                    <span class="p">]</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;sort&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;_score&quot;</span><span class="p">:</span> <span class="s2">&quot;desc&quot;</span><span class="p">}],</span>
+            <span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="mi">10</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Bias towards matching energy level</span>
+        <span class="n">level_energy_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;empty&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;busy&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="mi">5</span>
+        <span class="p">}</span>
+        <span class="n">target_energy</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">level_energy_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="n">query</span><span class="p">[</span><span class="s2">&quot;query&quot;</span><span class="p">][</span><span class="s2">&quot;bool&quot;</span><span class="p">][</span><span class="s2">&quot;should&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;term&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;energylevel&quot;</span><span class="p">:</span> <span class="n">target_energy</span><span class="p">}}</span>
+        <span class="p">]</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="n">query</span><span class="p">)</span>
+        <span class="n">hits</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;hits&quot;</span><span class="p">][</span><span class="s2">&quot;hits&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">hits</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Pick randomly from top 5 results to avoid deterministic rotation</span>
+        <span class="kn">import</span> <span class="nn">random</span>
+        <span class="n">selected_source</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">hits</span><span class="p">[:</span><span class="mi">5</span><span class="p">])[</span><span class="s2">&quot;_source&quot;</span><span class="p">]</span>
+
+        <span class="n">track</span> <span class="o">=</span> <span class="n">Track</span><span class="p">(</span>
+            <span class="n">title</span>    <span class="o">=</span> <span class="n">selected_source</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">],</span>
+            <span class="n">file</span>     <span class="o">=</span> <span class="n">selected_source</span><span class="p">[</span><span class="s2">&quot;filepath&quot;</span><span class="p">],</span>
+            <span class="n">mood</span>     <span class="o">=</span> <span class="n">mood</span><span class="p">,</span>
+            <span class="n">genre</span>    <span class="o">=</span> <span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;genre&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+            <span class="n">bpm</span>      <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bpm&quot;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)),</span>
+            <span class="n">energy</span>   <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;energylevel&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)),</span>
+            <span class="n">duration</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;duration&quot;</span><span class="p">,</span> <span class="mi">180</span><span class="p">)),</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">15</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="n">mood</span>
+        <span class="k">return</span> <span class="n">track</span>
+</code></pre></div>
+
+<p>This connects the radar hardware directly to the existing Aniket-pet-project music library. The field names (<code>bpm</code>, <code>energylevel</code>, <code>filepath</code>, <code>status</code>) map directly to what is in the Elasticsearch index. The BPM guardrails from the mood engine apply on top of whatever the library contains, so a track tagged as Pop with BPM 160 does not get played in an <code>active</code> setting even if the genre filter would otherwise permit it.</p>
+<hr />
+<h2 id="deployment-layout">Deployment Layout<a class="headerlink" href="#deployment-layout" title="Permanent link">&para;</a></h2>
+<p>The full system runs on a single machine inside the venue. A Raspberry Pi 4 is sufficient. The ES32 talks to it over the local WiFi network.</p>
+<div class="code-block"><pre><span></span><code>Venue Network
+├── ESP32 (radar sensor, WiFi client)
+│     UART → RD-03E mmWave radar
+│     HTTP POST → /state every 30s
+│
+└── Raspberry Pi 4 (music server)
+      Flask API (api.py) on port 5000
+      MoodEngine (mood_engine.py)
+      PySide6 Player (player.py)
+      Audio out → venue PA system
+</code></pre></div>
+
+<p>The Pi connects to the PA system via 3.5mm stereo out or via USB audio interface for better quality. No cloud dependency. No external API calls during normal operation. The entire system runs offline after the initial software setup.</p>
+<p>The Flask API and the player are started as systemd services so they restart on reboot:</p>
+<div class="code-block"><pre><span></span><code><span class="c1"># /etc/systemd/system/aniket-pet-project-api.service</span>
+<span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Aniket-pet-project State API</span>
+<span class="na">After</span><span class="o">=</span><span class="s">network.target</span>
+
+<span class="k">[Service]</span>
+<span class="na">User</span><span class="o">=</span><span class="s">pi</span>
+<span class="na">WorkingDirectory</span><span class="o">=</span><span class="s">/home/pi/aniket-pet-project</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/home/pi/aniket-pet-project/venv/bin/python api.py</span>
+<span class="na">Restart</span><span class="o">=</span><span class="s">always</span>
+<span class="na">RestartSec</span><span class="o">=</span><span class="s">5</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+</code></pre></div>
+
+<div class="code-block"><pre><span></span><code>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>aniket-pet-project-api
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>aniket-pet-project-player
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>aniket-pet-project-api
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>aniket-pet-project-player
+</code></pre></div>
+
+<hr />
+<h2 id="limitations-and-what-comes-next">Limitations and What Comes Next<a class="headerlink" href="#limitations-and-what-comes-next" title="Permanent link">&para;</a></h2>
+<p>The RD-03E is a single-zone, single-target sensor. The density inference is a proxy based on behavioural signals, not an actual headcount. It is reliable enough to distinguish empty from active from crowded, which is all the music engine needs. It is not reliable enough to tell you there are exactly 7 people in the room.</p>
+<p>For higher accuracy, the HLK-LD2450 is a direct upgrade path. It outputs X/Y coordinates for up to 3 tracked targets simultaneously, which makes it possible to count individuals directly rather than inferring from behavioural signatures. The UART protocol is different but the firmware structure is identical.</p>
+<p>For multi-zone coverage in a large retail floor (entrance, main floor, checkout), multiple ESP32 units with individual sensors feed into the same Flask API with a zone identifier in the POST payload. The mood engine can weight zones differently: checkout zone occupancy matters more for energy level than entrance zone occupancy.</p>
+<p>The MLX90640 thermal camera is worth exploring for situations where the RD-03E consistently misses still occupants (people sitting at cafe tables for example). It outputs an 8x8 temperature grid that can distinguish warm body signatures from the ambient environment, and it can count blobs across the grid. Privacy properties are equivalent to mmWave: no identifiable information, no images.</p>
+<p>The current implementation is a working proof of concept built to demonstrate the system to stakeholders. The Elasticsearch integration for the full Aniket-pet-project music library is the next concrete step.</p>
+  </article>
+</div>
+
+<script>
+  const bar = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const scrolled = window.scrollY;
+    const total = document.body.scrollHeight - window.innerHeight;
+    bar.style.width = (scrolled / total * 100) + '%';
+  });
+</script>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      Written by <a href="https://aniketmaithani.net">Aniket Maithani</a> — 
+      Engineering Leader &amp; Fintech Consultant · India
+      <br><br>
+      Built with a Python script and raw HTML · No framework required
+    </p>
+  </div>
+</footer>
+</body>
+</html>
