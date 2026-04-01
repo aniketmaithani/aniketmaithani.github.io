@@ -117,63 +117,43 @@ def ensure_output():
 
 def deploy(remote: str, branch: str, commit_msg: str):
     """
-    Copy output/ into a temporary worktree on <branch> and push.
-    Uses git worktree so we never leave the working directory.
+    Publish output/ to <branch> using a standalone temp git repo.
+    Compatible with all git versions (no worktree --orphan needed).
     """
     banner(f"Step 2 — Deploying to '{branch}' branch")
-
-    # ── Stash any local changes so git is clean ───────────────────────────────
-    stash_result = subprocess.run(
-        ["git", "stash", "--include-untracked", "-m", "deploy-ghpages-autostash"],
-        cwd=BASE_DIR, text=True, capture_output=True
-    )
-    stashed = "No local changes" not in stash_result.stdout
-
-    try:
-        _do_deploy(remote, branch, commit_msg)
-    finally:
-        if stashed:
-            print(f"\n{CYAN}Restoring stashed changes...{RESET}")
-            subprocess.run(["git", "stash", "pop"], cwd=BASE_DIR)
+    _do_deploy(remote, branch, commit_msg)
 
 
 def _do_deploy(remote: str, branch: str, commit_msg: str):
-    # ── Does the branch already exist on origin? ──────────────────────────────
-    remote_refs = run_capture(["git", "ls-remote", "--heads", remote, branch])
-    branch_exists_remote = bool(remote_refs)
+    # ── Resolve the actual remote push URL ───────────────────────────────────
+    remote_url = run_capture(["git", "remote", "get-url", remote])
 
-    # ── Does the branch exist locally? ───────────────────────────────────────
-    local_branches = run_capture(["git", "branch"]).replace("*", "").split()
-    branch_exists_local = branch in local_branches
-
-    # ── Set up a temp worktree ────────────────────────────────────────────────
+    # ── Create a completely fresh, isolated temp repo ─────────────────────────
     tmp_dir = Path(tempfile.mkdtemp(prefix="ghpages_deploy_"))
-    print(f"{DIM}Temp worktree: {tmp_dir}{RESET}")
+    print(f"{DIM}Temp dir: {tmp_dir}{RESET}\n")
 
     try:
-        if branch_exists_remote:
-            # Fetch latest state
-            print(f"{CYAN}Fetching remote branch '{branch}'...{RESET}")
-            run(["git", "fetch", remote, branch])
-            run(["git", "worktree", "add", str(tmp_dir), f"{remote}/{branch}"])
-        elif branch_exists_local:
-            run(["git", "worktree", "add", str(tmp_dir), branch])
-        else:
-            # Create the branch as an orphan (no history)
-            print(f"{CYAN}Creating orphan branch '{branch}'...{RESET}")
-            run(["git", "worktree", "add", "--orphan", "-b", branch, str(tmp_dir)])
+        # Init a brand-new repo with the target branch name
+        run(["git", "init", "-b", branch], cwd=tmp_dir, check=False)
+        # Fallback for git < 2.28 that doesn't support -b on init
+        run(["git", "checkout", "-b", branch], cwd=tmp_dir, check=False)
+        run(["git", "remote", "add", "origin", remote_url], cwd=tmp_dir)
 
-        # ── Clear existing content (keep .git) ───────────────────────────────
-        for item in tmp_dir.iterdir():
-            if item.name == ".git":
-                continue
-            if item.is_dir():
-                shutil.rmtree(item)
-            else:
-                item.unlink()
+        # ── If branch already exists on remote, seed history so push is fast-forward
+        remote_refs = run_capture(["git", "ls-remote", "--heads", "origin", branch])
+        if remote_refs:
+            print(f"{CYAN}Fetching existing '{branch}' history...{RESET}")
+            subprocess.run(
+                ["git", "fetch", "--depth=1", "origin", branch],
+                cwd=tmp_dir, capture_output=True
+            )
+            subprocess.run(
+                ["git", "reset", "--soft", f"origin/{branch}"],
+                cwd=tmp_dir, capture_output=True
+            )
 
-        # ── Copy output/ contents into the worktree ───────────────────────────
-        print(f"\n{CYAN}Copying output/ → worktree...{RESET}")
+        # ── Copy output/ contents into the temp repo ──────────────────────────
+        print(f"{CYAN}Copying output/ → deploy dir...{RESET}")
         for src in OUTPUT_DIR.rglob("*"):
             if src.is_file():
                 rel = src.relative_to(OUTPUT_DIR)
@@ -181,38 +161,33 @@ def _do_deploy(remote: str, branch: str, commit_msg: str):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
 
-        copied = list(tmp_dir.rglob("*"))
-        print(f"{GREEN}✓ {len(copied)} item(s) copied{RESET}")
+        n_files = sum(1 for _ in OUTPUT_DIR.rglob("*") if _.is_file())
+        print(f"{GREEN}✓ {n_files} file(s) copied{RESET}")
 
-        # ── Add a .nojekyll file so GH Pages serves raw HTML ─────────────────
-        nojekyll = tmp_dir / ".nojekyll"
-        nojekyll.touch()
+        # ── Add .nojekyll so GitHub Pages serves raw HTML ─────────────────────
+        (tmp_dir / ".nojekyll").touch()
         print(f"{GREEN}✓ .nojekyll added{RESET}")
 
-        # ── Git commit ────────────────────────────────────────────────────────
+        # ── Commit ────────────────────────────────────────────────────────────
         run(["git", "add", "--all"], cwd=tmp_dir)
 
-        # Check if there's anything to commit
         status = run_capture(["git", "status", "--porcelain"], cwd=tmp_dir)
         if not status:
             print(f"\n{YELLOW}⊘ Nothing changed — site is already up to date.{RESET}\n")
             return
 
+        # Need a git identity in the temp repo (inherits from global config)
         run(["git", "commit", "-m", commit_msg], cwd=tmp_dir)
         print(f"{GREEN}✓ Commit created{RESET}")
 
-        # ── Push ──────────────────────────────────────────────────────────────
-        print(f"\n{CYAN}Pushing to {remote}/{branch}...{RESET}")
-        run(["git", "push", remote, f"HEAD:{branch}", "--force"], cwd=tmp_dir)
+        # ── Force-push directly to remote URL ────────────────────────────────
+        print(f"\n{CYAN}Pushing to origin/{branch}...{RESET}")
+        run(["git", "push", "origin", f"HEAD:{branch}", "--force"], cwd=tmp_dir)
 
     finally:
-        # ── Remove temp worktree ──────────────────────────────────────────────
-        subprocess.run(["git", "worktree", "remove", "--force", str(tmp_dir)], cwd=BASE_DIR)
-        if tmp_dir.exists():
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # ── Print the live URL ────────────────────────────────────────────────────
-    remote_url = run_capture(["git", "remote", "get-url", remote])
     live_url = derive_pages_url(remote_url)
     print(f"\n{BOLD}{GREEN}🚀 Deployed successfully!{RESET}")
     if live_url:
