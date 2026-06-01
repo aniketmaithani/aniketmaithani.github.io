@@ -1,5 +1,25 @@
 [
   {
+    "slug": "design-it-then-code-it",
+    "title": "Design It, Then Code It: What Shipping LLM Products Taught Me About Architecture and PII",
+    "date": "2026-06-01",
+    "date_display": "June 01, 2026",
+    "date_iso": "2026-06-01T00:00:00",
+    "author": "Aniket Maithani",
+    "tags": [
+      "llm",
+      "architecture",
+      "security",
+      "pii",
+      "ai",
+      "fintech"
+    ],
+    "description": "Most LLM products ship to production without anyone drawing a single diagram. After fifteen years in fintech, here is why I design the data flow on paper first \u2014 and how LLMs broke my old assumptions about protecting personal data.",
+    "reading_time": 7,
+    "cover_image": "",
+    "source_file": "posts/design-it-then-code-it.md"
+  },
+  {
     "slug": "side-project-adaptive-music",
     "title": "ESP32 + mmWave Radar: Privacy-First People Counting and Adaptive Music for Retail",
     "date": "2026-03-28",
