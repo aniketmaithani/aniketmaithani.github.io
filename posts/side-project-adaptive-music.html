@@ -490,345 +490,345 @@ footer a:hover { color: var(--text); }
 <h2 id="esp32-firmware">ESP32 Firmware<a class="headerlink" href="#esp32-firmware" title="Permanent link">&para;</a></h2>
 <p>The firmware has two jobs. Read the RD-03E via UART and compute the density score. Then POST the result to the Flask API over WiFi every 30 seconds.</p>
 <p>The RD-03E communicates over UART at 256000 baud. The frame format is simple: a header byte <code>0xAA</code>, a state byte (0 for no presence, 1 for moving target, 2 for static target), a distance byte (in tens of centimeters), a speed byte, and a footer byte <code>0x55</code>.</p>
-<div class="code-block"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;WiFi.h&gt;</span>
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;HTTPClient.h&gt;</span>
-<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;ArduinoJson.h&gt;</span>
+<pre class="code-block"><code class="language-cpp">#include &lt;WiFi.h&gt;
+#include &lt;HTTPClient.h&gt;
+#include &lt;ArduinoJson.h&gt;
 
-<span class="c1">// WiFi credentials</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">WIFI_SSID</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;your-network&quot;</span><span class="p">;</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">WIFI_PASSWORD</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;your-password&quot;</span><span class="p">;</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">API_ENDPOINT</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://192.168.1.100:5000/state&quot;</span><span class="p">;</span>
+// WiFi credentials
+const char* WIFI_SSID     = &quot;your-network&quot;;
+const char* WIFI_PASSWORD = &quot;your-password&quot;;
+const char* API_ENDPOINT  = &quot;http://192.168.1.100:5000/state&quot;;
 
-<span class="c1">// UART2 for radar (TX2=17, RX2=16)</span>
-<span class="n">HardwareSerial</span><span class="w"> </span><span class="nf">RadarSerial</span><span class="p">(</span><span class="mi">2</span><span class="p">);</span>
+// UART2 for radar (TX2=17, RX2=16)
+HardwareSerial RadarSerial(2);
 
-<span class="c1">// Frame format constants</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0xAA</span><span class="p">;</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">FRAME_FOOTER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x55</span><span class="p">;</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w">     </span><span class="n">FRAME_LEN</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span>
+// Frame format constants
+const uint8_t FRAME_HEADER = 0xAA;
+const uint8_t FRAME_FOOTER = 0x55;
+const int     FRAME_LEN    = 5;
 
-<span class="kt">uint8_t</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">FRAME_LEN</span><span class="p">];</span>
-<span class="kt">int</span><span class="w">     </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+uint8_t frameBuf[FRAME_LEN];
+int     framePos = 0;
 
-<span class="c1">// Behaviour window: 200 samples at ~10 reads/sec = last 20 seconds</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">WIN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">;</span>
-<span class="kt">int</span><span class="w">  </span><span class="n">distWindow</span><span class="p">[</span><span class="n">WIN</span><span class="p">];</span>
-<span class="kt">bool</span><span class="w"> </span><span class="n">presWindow</span><span class="p">[</span><span class="n">WIN</span><span class="p">];</span>
-<span class="kt">int</span><span class="w">  </span><span class="n">winIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+// Behaviour window: 200 samples at ~10 reads/sec = last 20 seconds
+const int WIN = 200;
+int  distWindow[WIN];
+bool presWindow[WIN];
+int  winIdx = 0;
 
-<span class="c1">// Distance smoothing buffer</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">HIST</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6</span><span class="p">;</span>
-<span class="kt">int</span><span class="w"> </span><span class="n">distHistory</span><span class="p">[</span><span class="n">HIST</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
-<span class="kt">int</span><span class="w"> </span><span class="n">histIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+// Distance smoothing buffer
+const int HIST = 6;
+int distHistory[HIST] = {0};
+int histIdx = 0;
 
-<span class="c1">// Post interval</span>
-<span class="k">const</span><span class="w"> </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">POST_INTERVAL_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30000</span><span class="p">;</span>
-<span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">lastPost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+// Post interval
+const unsigned long POST_INTERVAL_MS = 30000;
+unsigned long lastPost = 0;
 
-<span class="c1">// ── Metric helpers ──────────────────────────────────────────────────────────</span>
+// ── Metric helpers ──────────────────────────────────────────────────────────
 
-<span class="kt">int</span><span class="w"> </span><span class="nf">occupancyPct</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="w"> </span><span class="n">count</span><span class="o">++</span><span class="p">;</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">count</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span>
-<span class="p">}</span>
+int occupancyPct() {
+  int count = 0;
+  for (int i = 0; i &lt; WIN; i++) if (presWindow[i]) count++;
+  return (count * 100) / WIN;
+}
 
-<span class="kt">int</span><span class="w"> </span><span class="nf">distVariance</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">];</span><span class="w"> </span><span class="n">n</span><span class="o">++</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">mean</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">n</span><span class="p">;</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">distWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">mean</span><span class="p">);</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">n</span><span class="p">;</span>
-<span class="p">}</span>
+int distVariance() {
+  int sum = 0, n = 0;
+  for (int i = 0; i &lt; WIN; i++) {
+    if (distWindow[i] &gt; 0) { sum += distWindow[i]; n++; }
+  }
+  if (n &lt; 2) return 0;
+  int mean = sum / n;
+  int var = 0;
+  for (int i = 0; i &lt; WIN; i++) {
+    if (distWindow[i] &gt; 0) var += abs(distWindow[i] - mean);
+  }
+  return var / n;
+}
 
-<span class="kt">int</span><span class="w"> </span><span class="nf">flickerCount</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">flicks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">presWindow</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="n">flicks</span><span class="o">++</span><span class="p">;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">flicks</span><span class="p">;</span>
-<span class="p">}</span>
+int flickerCount() {
+  int flicks = 0;
+  for (int i = 1; i &lt; WIN; i++) {
+    if (presWindow[i] != presWindow[i - 1]) flicks++;
+  }
+  return flicks;
+}
 
-<span class="c1">// ── Crowd inference ─────────────────────────────────────────────────────────</span>
+// ── Crowd inference ─────────────────────────────────────────────────────────
 
-<span class="k">struct</span><span class="w"> </span><span class="nc">CrowdReading</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kt">int</span><span class="w">        </span><span class="n">score</span><span class="p">;</span>
-<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">level</span><span class="p">;</span>
-<span class="p">};</span>
+struct CrowdReading {
+  int        score;
+  const char* level;
+};
 
-<span class="n">CrowdReading</span><span class="w"> </span><span class="nf">inferCrowd</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">occ</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">occupancyPct</span><span class="p">();</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">var</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">distVariance</span><span class="p">();</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">flicker</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">flickerCount</span><span class="p">();</span>
+CrowdReading inferCrowd() {
+  int occ     = occupancyPct();
+  int var     = distVariance();
+  int flicker = flickerCount();
 
-<span class="w">  </span><span class="c1">// Score is a weighted combination of three signals</span>
-<span class="w">  </span><span class="c1">// Each contributes independently to avoid single-signal noise</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+  // Score is a weighted combination of three signals
+  // Each contributes independently to avoid single-signal noise
+  int score = 0;
 
-<span class="w">  </span><span class="c1">// Occupancy contribution (0-40 points)</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">80</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">40</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">60</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">28</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">18</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">occ</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">8</span><span class="p">;</span>
+  // Occupancy contribution (0-40 points)
+  if (occ &gt; 80) score += 40;
+  else if (occ &gt; 60) score += 28;
+  else if (occ &gt; 40) score += 18;
+  else if (occ &gt; 20) score += 8;
 
-<span class="w">  </span><span class="c1">// Distance variance contribution (0-35 points)</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">150</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">35</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">80</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">25</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">14</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">var</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">15</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">6</span><span class="p">;</span>
+  // Distance variance contribution (0-35 points)
+  if (var &gt; 150) score += 35;
+  else if (var &gt; 80)  score += 25;
+  else if (var &gt; 40)  score += 14;
+  else if (var &gt; 15)  score += 6;
 
-<span class="w">  </span><span class="c1">// Flicker contribution (0-25 points)</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">40</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">25</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">18</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">flicker</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w">  </span><span class="n">score</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
+  // Flicker contribution (0-25 points)
+  if (flicker &gt; 40) score += 25;
+  else if (flicker &gt; 20) score += 18;
+  else if (flicker &gt; 10) score += 10;
+  else if (flicker &gt; 4)  score += 4;
 
-<span class="w">  </span><span class="c1">// Map score to level</span>
-<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">level</span><span class="p">;</span>
-<span class="w">  </span><span class="k">if</span><span class="w">      </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;empty&quot;</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;quiet&quot;</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">45</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;active&quot;</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">score</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">70</span><span class="p">)</span><span class="w">  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;busy&quot;</span><span class="p">;</span>
-<span class="w">  </span><span class="k">else</span><span class="w">                  </span><span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;crowded&quot;</span><span class="p">;</span>
+  // Map score to level
+  const char* level;
+  if      (score == 0)  level = &quot;empty&quot;;
+  else if (score &lt; 20)  level = &quot;quiet&quot;;
+  else if (score &lt; 45)  level = &quot;active&quot;;
+  else if (score &lt; 70)  level = &quot;busy&quot;;
+  else                  level = &quot;crowded&quot;;
 
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="n">score</span><span class="p">,</span><span class="w"> </span><span class="n">level</span><span class="p">};</span>
-<span class="p">}</span>
+  return {score, level};
+}
 
-<span class="c1">// ── Frame parsing ────────────────────────────────────────────────────────────</span>
+// ── Frame parsing ────────────────────────────────────────────────────────────
 
-<span class="kt">bool</span><span class="w"> </span><span class="nf">parseFrame</span><span class="p">(</span><span class="kt">int</span><span class="o">&amp;</span><span class="w"> </span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">&amp;</span><span class="w"> </span><span class="n">speed</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="o">&amp;</span><span class="w"> </span><span class="n">present</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">FRAME_FOOTER</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+bool parseFrame(int&amp; dist, int&amp; speed, bool&amp; present) {
+  if (frameBuf[0] != FRAME_HEADER) return false;
+  if (frameBuf[4] != FRAME_FOOTER) return false;
 
-<span class="w">  </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
-<span class="w">  </span><span class="n">present</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
-<span class="w">  </span><span class="n">dist</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w">  </span><span class="c1">// convert to cm</span>
-<span class="w">  </span><span class="n">speed</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">frameBuf</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+  uint8_t state = frameBuf[1];
+  present = (state == 1 || state == 2);
+  dist    = frameBuf[2] * 10;  // convert to cm
+  speed   = frameBuf[3];
 
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
-<span class="p">}</span>
+  return true;
+}
 
-<span class="c1">// ── WiFi setup ───────────────────────────────────────────────────────────────</span>
+// ── WiFi setup ───────────────────────────────────────────────────────────────
 
-<span class="kt">void</span><span class="w"> </span><span class="nf">connectWiFi</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="n">WiFi</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="n">WIFI_SSID</span><span class="p">,</span><span class="w"> </span><span class="n">WIFI_PASSWORD</span><span class="p">);</span>
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">attempts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">WiFi</span><span class="p">.</span><span class="n">status</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">WL_CONNECTED</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">attempts</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">delay</span><span class="p">(</span><span class="mi">500</span><span class="p">);</span>
-<span class="w">    </span><span class="n">attempts</span><span class="o">++</span><span class="p">;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+void connectWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED &amp;&amp; attempts &lt; 20) {
+    delay(500);
+    attempts++;
+  }
+}
 
-<span class="c1">// ── State POST ───────────────────────────────────────────────────────────────</span>
+// ── State POST ───────────────────────────────────────────────────────────────
 
-<span class="kt">void</span><span class="w"> </span><span class="nf">postState</span><span class="p">(</span><span class="n">CrowdReading</span><span class="w"> </span><span class="n">reading</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">WiFi</span><span class="p">.</span><span class="n">status</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">WL_CONNECTED</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">connectWiFi</span><span class="p">();</span>
-<span class="w">    </span><span class="k">return</span><span class="p">;</span>
-<span class="w">  </span><span class="p">}</span>
+void postState(CrowdReading reading) {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    return;
+  }
 
-<span class="w">  </span><span class="n">HTTPClient</span><span class="w"> </span><span class="n">http</span><span class="p">;</span>
-<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="n">API_ENDPOINT</span><span class="p">);</span>
-<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">addHeader</span><span class="p">(</span><span class="s">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span><span class="p">);</span>
+  HTTPClient http;
+  http.begin(API_ENDPOINT);
+  http.addHeader(&quot;Content-Type&quot;, &quot;application/json&quot;);
 
-<span class="w">  </span><span class="n">StaticJsonDocument</span><span class="o">&lt;</span><span class="mi">256</span><span class="o">&gt;</span><span class="w"> </span><span class="n">doc</span><span class="p">;</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;level&quot;</span><span class="p">]</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="n">reading</span><span class="p">.</span><span class="n">level</span><span class="p">;</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;score&quot;</span><span class="p">]</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="n">reading</span><span class="p">.</span><span class="n">score</span><span class="p">;</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;occupancy&quot;</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">occupancyPct</span><span class="p">();</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;variance&quot;</span><span class="p">]</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">distVariance</span><span class="p">();</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;flicker&quot;</span><span class="p">]</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">flickerCount</span><span class="p">();</span>
-<span class="w">  </span><span class="n">doc</span><span class="p">[</span><span class="s">&quot;timestamp&quot;</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
+  StaticJsonDocument&lt;256&gt; doc;
+  doc[&quot;level&quot;]      = reading.level;
+  doc[&quot;score&quot;]      = reading.score;
+  doc[&quot;occupancy&quot;]  = occupancyPct();
+  doc[&quot;variance&quot;]   = distVariance();
+  doc[&quot;flicker&quot;]    = flickerCount();
+  doc[&quot;timestamp&quot;]  = millis();
 
-<span class="w">  </span><span class="n">String</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
-<span class="w">  </span><span class="n">serializeJson</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
+  String body;
+  serializeJson(doc, body);
 
-<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">responseCode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">POST</span><span class="p">(</span><span class="n">body</span><span class="p">);</span>
-<span class="w">  </span><span class="n">http</span><span class="p">.</span><span class="n">end</span><span class="p">();</span>
-<span class="p">}</span>
+  int responseCode = http.POST(body);
+  http.end();
+}
 
-<span class="c1">// ── Setup and loop ────────────────────────────────────────────────────────────</span>
+// ── Setup and loop ────────────────────────────────────────────────────────────
 
-<span class="kt">void</span><span class="w"> </span><span class="nf">setup</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="n">Serial</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="mi">115200</span><span class="p">);</span>
-<span class="w">  </span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">begin</span><span class="p">(</span><span class="mi">256000</span><span class="p">,</span><span class="w"> </span><span class="n">SERIAL_8N1</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">17</span><span class="p">);</span>
-<span class="w">  </span><span class="n">connectWiFi</span><span class="p">();</span>
-<span class="p">}</span>
+void setup() {
+  Serial.begin(115200);
+  RadarSerial.begin(256000, SERIAL_8N1, 16, 17);
+  connectWiFi();
+}
 
-<span class="kt">void</span><span class="w"> </span><span class="nf">loop</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// Read bytes from radar, assemble frames</span>
-<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">available</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">byte</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RadarSerial</span><span class="p">.</span><span class="n">read</span><span class="p">();</span>
+void loop() {
+  // Read bytes from radar, assemble frames
+  while (RadarSerial.available()) {
+    uint8_t byte = RadarSerial.read();
 
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">byte</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">FRAME_HEADER</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">framePos</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">framePos</span><span class="o">++</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">byte</span><span class="p">;</span>
-<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">framePos</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">framePos</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">FRAME_LEN</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">frameBuf</span><span class="p">[</span><span class="n">framePos</span><span class="o">++</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">byte</span><span class="p">;</span>
-<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">framePos</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">FRAME_LEN</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="n">speed</span><span class="p">;</span>
-<span class="w">        </span><span class="kt">bool</span><span class="w"> </span><span class="n">present</span><span class="p">;</span>
-<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">parseFrame</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span><span class="w"> </span><span class="n">speed</span><span class="p">,</span><span class="w"> </span><span class="n">present</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="c1">// Update rolling window</span>
-<span class="w">          </span><span class="n">distWindow</span><span class="p">[</span><span class="n">winIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">present</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">dist</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">          </span><span class="n">presWindow</span><span class="p">[</span><span class="n">winIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">present</span><span class="p">;</span>
-<span class="w">          </span><span class="n">winIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">winIdx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">WIN</span><span class="p">;</span>
+    if (byte == FRAME_HEADER &amp;&amp; framePos == 0) {
+      frameBuf[framePos++] = byte;
+    } else if (framePos &gt; 0 &amp;&amp; framePos &lt; FRAME_LEN) {
+      frameBuf[framePos++] = byte;
+      if (framePos == FRAME_LEN) {
+        int dist, speed;
+        bool present;
+        if (parseFrame(dist, speed, present)) {
+          // Update rolling window
+          distWindow[winIdx] = present ? dist : 0;
+          presWindow[winIdx] = present;
+          winIdx = (winIdx + 1) % WIN;
 
-<span class="w">          </span><span class="c1">// Update smoothing buffer</span>
-<span class="w">          </span><span class="n">distHistory</span><span class="p">[</span><span class="n">histIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dist</span><span class="p">;</span>
-<span class="w">          </span><span class="n">histIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">histIdx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">HIST</span><span class="p">;</span>
-<span class="w">        </span><span class="p">}</span>
-<span class="w">        </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">framePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">}</span>
+          // Update smoothing buffer
+          distHistory[histIdx] = dist;
+          histIdx = (histIdx + 1) % HIST;
+        }
+        framePos = 0;
+      }
+    } else {
+      framePos = 0;
+    }
+  }
 
-<span class="w">  </span><span class="c1">// POST state on interval</span>
-<span class="w">  </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">millis</span><span class="p">();</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">lastPost</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">POST_INTERVAL_MS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">CrowdReading</span><span class="w"> </span><span class="n">reading</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">inferCrowd</span><span class="p">();</span>
-<span class="w">    </span><span class="n">postState</span><span class="p">(</span><span class="n">reading</span><span class="p">);</span>
-<span class="w">    </span><span class="n">lastPost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">now</span><span class="p">;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+  // POST state on interval
+  unsigned long now = millis();
+  if (now - lastPost &gt;= POST_INTERVAL_MS) {
+    CrowdReading reading = inferCrowd();
+    postState(reading);
+    lastPost = now;
+  }
+}
+</code></pre>
 
 <p>The 30-second POST interval is a deliberate choice. Music switching on a 30-second delay feels natural in a retail environment. A 5-second interval would cause constant churn. The window of 200 samples at roughly 10 reads per second gives a 20-second behavioural history, which smooths out transient spikes like a single person walking past.</p>
 <hr />
 <h2 id="flask-state-api">Flask State API<a class="headerlink" href="#flask-state-api" title="Permanent link">&para;</a></h2>
 <p>The API is a thin state store. The ESP32 POSTs to it, the player GETs from it. There is no database, no authentication, no queue. State is written to a JSON file on disk so it survives a Flask restart.</p>
-<div class="code-block"><pre><span></span><code><span class="c1"># api.py</span>
-<span class="kn">import</span> <span class="nn">json</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
-<span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">jsonify</span>
-<span class="kn">from</span> <span class="nn">flask_cors</span> <span class="kn">import</span> <span class="n">CORS</span>
+<pre class="code-block"><code class="language-python"># api.py
+import json
+import os
+from datetime import datetime
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
-<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
-<span class="n">CORS</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+app = Flask(__name__)
+CORS(app)
 
-<span class="n">STATE_FILE</span> <span class="o">=</span> <span class="s2">&quot;state.json&quot;</span>
+STATE_FILE = &quot;state.json&quot;
 
-<span class="n">DEFAULT_STATE</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;level&quot;</span><span class="p">:</span>     <span class="s2">&quot;empty&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;score&quot;</span><span class="p">:</span>     <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;occupancy&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;variance&quot;</span><span class="p">:</span>  <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;flicker&quot;</span><span class="p">:</span>   <span class="mi">0</span><span class="p">,</span>
-    <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="s2">&quot;updated_at&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">}</span>
-
-
-<span class="k">def</span> <span class="nf">load_state</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">):</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">DEFAULT_STATE</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+DEFAULT_STATE = {
+    &quot;level&quot;:     &quot;empty&quot;,
+    &quot;score&quot;:     0,
+    &quot;occupancy&quot;: 0,
+    &quot;variance&quot;:  0,
+    &quot;flicker&quot;:   0,
+    &quot;timestamp&quot;: None,
+    &quot;updated_at&quot;: None,
+}
 
 
-<span class="k">def</span> <span class="nf">save_state</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">STATE_FILE</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+def load_state() -&gt; dict:
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    return DEFAULT_STATE.copy()
 
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/state&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;POST&quot;</span><span class="p">])</span>
-<span class="k">def</span> <span class="nf">update_state</span><span class="p">():</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_json</span><span class="p">(</span><span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;empty body&quot;</span><span class="p">}),</span> <span class="mi">400</span>
-
-    <span class="n">state</span> <span class="o">=</span> <span class="n">load_state</span><span class="p">()</span>
-    <span class="n">state</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
-        <span class="s2">&quot;level&quot;</span><span class="p">:</span>     <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;level&quot;</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">]),</span>
-        <span class="s2">&quot;score&quot;</span><span class="p">:</span>     <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]),</span>
-        <span class="s2">&quot;occupancy&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;occupancy&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-        <span class="s2">&quot;variance&quot;</span><span class="p">:</span>  <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;variance&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-        <span class="s2">&quot;flicker&quot;</span><span class="p">:</span>   <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;flicker&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-        <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">),</span>
-        <span class="s2">&quot;updated_at&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
-    <span class="p">})</span>
-    <span class="n">save_state</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">]})</span>
+def save_state(state: dict):
+    with open(STATE_FILE, &quot;w&quot;) as f:
+        json.dump(state, f, indent=2)
 
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/state&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GET&quot;</span><span class="p">])</span>
-<span class="k">def</span> <span class="nf">get_state</span><span class="p">():</span>
-    <span class="k">return</span> <span class="n">jsonify</span><span class="p">(</span><span class="n">load_state</span><span class="p">())</span>
+@app.route(&quot;/state&quot;, methods=[&quot;POST&quot;])
+def update_state():
+    data = request.get_json(force=True)
+    if not data:
+        return jsonify({&quot;error&quot;: &quot;empty body&quot;}), 400
+
+    state = load_state()
+    state.update({
+        &quot;level&quot;:     data.get(&quot;level&quot;, state[&quot;level&quot;]),
+        &quot;score&quot;:     data.get(&quot;score&quot;, state[&quot;score&quot;]),
+        &quot;occupancy&quot;: data.get(&quot;occupancy&quot;, 0),
+        &quot;variance&quot;:  data.get(&quot;variance&quot;, 0),
+        &quot;flicker&quot;:   data.get(&quot;flicker&quot;, 0),
+        &quot;timestamp&quot;: data.get(&quot;timestamp&quot;),
+        &quot;updated_at&quot;: datetime.utcnow().isoformat(),
+    })
+    save_state(state)
+    return jsonify({&quot;status&quot;: &quot;ok&quot;, &quot;level&quot;: state[&quot;level&quot;]})
 
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">&quot;/health&quot;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GET&quot;</span><span class="p">])</span>
-<span class="k">def</span> <span class="nf">health</span><span class="p">():</span>
-    <span class="n">state</span> <span class="o">=</span> <span class="n">load_state</span><span class="p">()</span>
-    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span>
-        <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;current_level&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">],</span>
-        <span class="s2">&quot;last_update&quot;</span><span class="p">:</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;updated_at&quot;</span><span class="p">),</span>
-    <span class="p">})</span>
+@app.route(&quot;/state&quot;, methods=[&quot;GET&quot;])
+def get_state():
+    return jsonify(load_state())
 
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">app</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</code></pre></div>
+@app.route(&quot;/health&quot;, methods=[&quot;GET&quot;])
+def health():
+    state = load_state()
+    return jsonify({
+        &quot;status&quot;: &quot;ok&quot;,
+        &quot;current_level&quot;: state[&quot;level&quot;],
+        &quot;last_update&quot;: state.get(&quot;updated_at&quot;),
+    })
+
+
+if __name__ == &quot;__main__&quot;:
+    app.run(host=&quot;0.0.0.0&quot;, port=5000, debug=False)
+</code></pre>
 
 <p>This handles a stale sensor gracefully. If the ESP32 has not POSTed for 10 minutes (WiFi drop, power outage), the state file retains the last known level. The player keeps playing the last mood. No crash, no silence, no exception.</p>
 <hr />
 <h2 id="the-music-catalogue">The Music Catalogue<a class="headerlink" href="#the-music-catalogue" title="Permanent link">&para;</a></h2>
 <p>The catalogue is a flat JSON file. Each entry is one track with enough metadata for the mood engine to make decisions.</p>
-<div class="code-block"><pre><span></span><code><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Slow Mornings&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/empty/slow-mornings.mp3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;calm&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Ambient&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">68</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">214</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Third Wave&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/quiet/third-wave.mp3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;calm&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Jazz&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">84</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">198</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Cafe Afternoon&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/active/cafe-afternoon.mp3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mid&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bossa Nova&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">104</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">187</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Current Thing&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/busy/current-thing.mp3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hype&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pop&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">124</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">201</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Peak Floor&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;music/crowded/peak-floor.mp3&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;mood&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hype&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Electronic&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;bpm&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">138</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;duration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">193</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">]</span>
-</code></pre></div>
+<pre class="code-block"><code class="language-json">[
+  {
+    &quot;title&quot;: &quot;Slow Mornings&quot;,
+    &quot;file&quot;: &quot;music/empty/slow-mornings.mp3&quot;,
+    &quot;mood&quot;: &quot;calm&quot;,
+    &quot;genre&quot;: &quot;Ambient&quot;,
+    &quot;bpm&quot;: 68,
+    &quot;energy&quot;: 1,
+    &quot;duration&quot;: 214
+  },
+  {
+    &quot;title&quot;: &quot;Third Wave&quot;,
+    &quot;file&quot;: &quot;music/quiet/third-wave.mp3&quot;,
+    &quot;mood&quot;: &quot;calm&quot;,
+    &quot;genre&quot;: &quot;Jazz&quot;,
+    &quot;bpm&quot;: 84,
+    &quot;energy&quot;: 2,
+    &quot;duration&quot;: 198
+  },
+  {
+    &quot;title&quot;: &quot;Cafe Afternoon&quot;,
+    &quot;file&quot;: &quot;music/active/cafe-afternoon.mp3&quot;,
+    &quot;mood&quot;: &quot;mid&quot;,
+    &quot;genre&quot;: &quot;Bossa Nova&quot;,
+    &quot;bpm&quot;: 104,
+    &quot;energy&quot;: 3,
+    &quot;duration&quot;: 187
+  },
+  {
+    &quot;title&quot;: &quot;Current Thing&quot;,
+    &quot;file&quot;: &quot;music/busy/current-thing.mp3&quot;,
+    &quot;mood&quot;: &quot;hype&quot;,
+    &quot;genre&quot;: &quot;Pop&quot;,
+    &quot;bpm&quot;: 124,
+    &quot;energy&quot;: 4,
+    &quot;duration&quot;: 201
+  },
+  {
+    &quot;title&quot;: &quot;Peak Floor&quot;,
+    &quot;file&quot;: &quot;music/crowded/peak-floor.mp3&quot;,
+    &quot;mood&quot;: &quot;hype&quot;,
+    &quot;genre&quot;: &quot;Electronic&quot;,
+    &quot;bpm&quot;: 138,
+    &quot;energy&quot;: 5,
+    &quot;duration&quot;: 193
+  }
+]
+</code></pre>
 
 <p>The <code>mood</code> field is the key link between the sensor output and the music selection. The mood engine maps crowd level to mood tag, then the player selects from all catalogue entries matching that mood.</p>
 <p>The BPM range by mood:</p>
@@ -866,311 +866,311 @@ footer a:hover { color: var(--text); }
 <hr />
 <h2 id="the-mood-engine">The Mood Engine<a class="headerlink" href="#the-mood-engine" title="Permanent link">&para;</a></h2>
 <p>The mood engine sits between the state API and the player. It reads the current level from state, maps it to a mood, selects the next track, and decides when to switch.</p>
-<div class="code-block"><pre><span></span><code><span class="c1"># mood_engine.py</span>
-<span class="kn">import</span> <span class="nn">json</span>
-<span class="kn">import</span> <span class="nn">random</span>
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+<pre class="code-block"><code class="language-python"># mood_engine.py
+import json
+import random
+from dataclasses import dataclass
+from typing import Optional
 
 
-<span class="n">LEVEL_TO_MOOD</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;empty&quot;</span><span class="p">:</span>   <span class="s2">&quot;calm&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;quiet&quot;</span><span class="p">:</span>   <span class="s2">&quot;calm&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;active&quot;</span><span class="p">:</span>  <span class="s2">&quot;mid&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;busy&quot;</span><span class="p">:</span>    <span class="s2">&quot;hype&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="s2">&quot;hype&quot;</span><span class="p">,</span>
-<span class="p">}</span>
+LEVEL_TO_MOOD = {
+    &quot;empty&quot;:   &quot;calm&quot;,
+    &quot;quiet&quot;:   &quot;calm&quot;,
+    &quot;active&quot;:  &quot;mid&quot;,
+    &quot;busy&quot;:    &quot;hype&quot;,
+    &quot;crowded&quot;: &quot;hype&quot;,
+}
 
-<span class="c1"># BPM guardrails per mood: never play outside this range regardless of catalogue</span>
-<span class="n">MOOD_BPM_RANGE</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;calm&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">55</span><span class="p">,</span> <span class="mi">92</span><span class="p">),</span>
-    <span class="s2">&quot;mid&quot;</span><span class="p">:</span>  <span class="p">(</span><span class="mi">88</span><span class="p">,</span> <span class="mi">118</span><span class="p">),</span>
-    <span class="s2">&quot;hype&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">112</span><span class="p">,</span> <span class="mi">148</span><span class="p">),</span>
-<span class="p">}</span>
-
-
-<span class="nd">@dataclass</span>
-<span class="k">class</span> <span class="nc">Track</span><span class="p">:</span>
-    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">file</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">mood</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">genre</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">bpm</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">energy</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">duration</span><span class="p">:</span> <span class="nb">int</span>
+# BPM guardrails per mood: never play outside this range regardless of catalogue
+MOOD_BPM_RANGE = {
+    &quot;calm&quot;: (55, 92),
+    &quot;mid&quot;:  (88, 118),
+    &quot;hype&quot;: (112, 148),
+}
 
 
-<span class="k">class</span> <span class="nc">MoodEngine</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">catalogue_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;catalogue.json&quot;</span><span class="p">):</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">catalogue_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-            <span class="n">raw</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Track</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">Track</span><span class="p">(</span><span class="o">**</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">raw</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># avoid immediate repeats</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+@dataclass
+class Track:
+    title: str
+    file: str
+    mood: str
+    genre: str
+    bpm: int
+    energy: int
+    duration: int
 
-    <span class="k">def</span> <span class="nf">level_to_mood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">LEVEL_TO_MOOD</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="s2">&quot;calm&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">get_next_track</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Track</span><span class="p">]:</span>
-        <span class="n">mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-        <span class="n">bpm_min</span><span class="p">,</span> <span class="n">bpm_max</span> <span class="o">=</span> <span class="n">MOOD_BPM_RANGE</span><span class="p">[</span><span class="n">mood</span><span class="p">]</span>
+class MoodEngine:
+    def __init__(self, catalogue_path: str = &quot;catalogue.json&quot;):
+        with open(catalogue_path) as f:
+            raw = json.load(f)
+        self.catalogue: list[Track] = [Track(**t) for t in raw]
+        self.last_played: list[str] = []  # avoid immediate repeats
+        self.current_mood: Optional[str] = None
 
-        <span class="c1"># Filter by mood and BPM guardrails</span>
-        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span>
-            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">mood</span> <span class="o">==</span> <span class="n">mood</span>
-            <span class="ow">and</span> <span class="n">bpm_min</span> <span class="o">&lt;=</span> <span class="n">t</span><span class="o">.</span><span class="n">bpm</span> <span class="o">&lt;=</span> <span class="n">bpm_max</span>
-            <span class="ow">and</span> <span class="n">t</span><span class="o">.</span><span class="n">file</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span>  <span class="c1"># avoid last 3 tracks</span>
-        <span class="p">]</span>
+    def level_to_mood(self, level: str) -&gt; str:
+        return LEVEL_TO_MOOD.get(level, &quot;calm&quot;)
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
-            <span class="c1"># Relax the recency filter if catalogue is small</span>
-            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">catalogue</span>
-                <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">mood</span> <span class="o">==</span> <span class="n">mood</span> <span class="ow">and</span> <span class="n">bpm_min</span> <span class="o">&lt;=</span> <span class="n">t</span><span class="o">.</span><span class="n">bpm</span> <span class="o">&lt;=</span> <span class="n">bpm_max</span>
-            <span class="p">]</span>
+    def get_next_track(self, level: str) -&gt; Optional[Track]:
+        mood = self.level_to_mood(level)
+        bpm_min, bpm_max = MOOD_BPM_RANGE[mood]
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
+        # Filter by mood and BPM guardrails
+        candidates = [
+            t for t in self.catalogue
+            if t.mood == mood
+            and bpm_min &lt;= t.bpm &lt;= bpm_max
+            and t.file not in self.last_played[-3:]  # avoid last 3 tracks
+        ]
 
-        <span class="c1"># Weight towards matching energy level more precisely</span>
-        <span class="n">level_energy_map</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;empty&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;busy&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="mi">5</span>
-        <span class="p">}</span>
-        <span class="n">target_energy</span> <span class="o">=</span> <span class="n">level_energy_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        if not candidates:
+            # Relax the recency filter if catalogue is small
+            candidates = [
+                t for t in self.catalogue
+                if t.mood == mood and bpm_min &lt;= t.bpm &lt;= bpm_max
+            ]
 
-        <span class="c1"># Sort by proximity to target energy, break ties randomly</span>
-        <span class="n">candidates</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">energy</span> <span class="o">-</span> <span class="n">target_energy</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()))</span>
-        <span class="n">selected</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        if not candidates:
+            return None
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">selected</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        # Weight towards matching energy level more precisely
+        level_energy_map = {
+            &quot;empty&quot;: 1, &quot;quiet&quot;: 2, &quot;active&quot;: 3, &quot;busy&quot;: 4, &quot;crowded&quot;: 5
+        }
+        target_energy = level_energy_map.get(level, 3)
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="n">mood</span>
-        <span class="k">return</span> <span class="n">selected</span>
+        # Sort by proximity to target energy, break ties randomly
+        candidates.sort(key=lambda t: (abs(t.energy - target_energy), random.random()))
+        selected = candidates[0]
 
-    <span class="k">def</span> <span class="nf">should_switch_now</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Returns True if the current crowd level has shifted mood category.</span>
-<span class="sd">        The player uses this to decide whether to crossfade at end of track</span>
-<span class="sd">        or interrupt immediately.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">True</span>
-        <span class="n">new_mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">current_level</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">new_mood</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span>
-</code></pre></div>
+        self.last_played.append(selected.file)
+        if len(self.last_played) &gt; 10:
+            self.last_played.pop(0)
+
+        self.current_mood = mood
+        return selected
+
+    def should_switch_now(self, current_level: str) -&gt; bool:
+        &quot;&quot;&quot;
+        Returns True if the current crowd level has shifted mood category.
+        The player uses this to decide whether to crossfade at end of track
+        or interrupt immediately.
+        &quot;&quot;&quot;
+        if self.current_mood is None:
+            return True
+        new_mood = self.level_to_mood(current_level)
+        return new_mood != self.current_mood
+</code></pre>
 
 <p>The <code>should_switch_now</code> method is important for UX. If the crowd level changes from <code>active</code> to <code>busy</code>, both map to <code>mid</code> and <code>hype</code> respectively. If the mood category changes, the player crossfades immediately. If the level changes within the same mood category (for example, <code>empty</code> to <code>quiet</code>, both <code>calm</code>), the track continues to completion and the next selection reflects the updated level.</p>
 <p>This prevents jarring mid-song transitions caused by brief spikes in crowd activity.</p>
 <hr />
 <h2 id="pyside6-player">PySide6 Player<a class="headerlink" href="#pyside6-player" title="Permanent link">&para;</a></h2>
 <p>The player is a PySide6 desktop application running on whatever machine is inside the venue. It polls the Flask API every 30 seconds, checks whether a mood switch is needed, and handles playback via pygame.</p>
-<div class="code-block"><pre><span></span><code><span class="c1"># player.py (core logic, abbreviated)</span>
-<span class="kn">import</span> <span class="nn">sys</span>
-<span class="kn">import</span> <span class="nn">json</span>
-<span class="kn">import</span> <span class="nn">threading</span>
-<span class="kn">import</span> <span class="nn">pygame</span>
-<span class="kn">import</span> <span class="nn">requests</span>
-<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
-<span class="kn">from</span> <span class="nn">PySide6.QtWidgets</span> <span class="kn">import</span> <span class="n">QApplication</span><span class="p">,</span> <span class="n">QMainWindow</span><span class="p">,</span> <span class="n">QLabel</span><span class="p">,</span> <span class="n">QPushButton</span>
-<span class="kn">from</span> <span class="nn">PySide6.QtCore</span> <span class="kn">import</span> <span class="n">Qt</span><span class="p">,</span> <span class="n">QTimer</span><span class="p">,</span> <span class="n">Signal</span><span class="p">,</span> <span class="n">QObject</span>
+<pre class="code-block"><code class="language-python"># player.py (core logic, abbreviated)
+import sys
+import json
+import threading
+import pygame
+import requests
+from datetime import datetime
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton
+from PySide6.QtCore import Qt, QTimer, Signal, QObject
 
-<span class="kn">from</span> <span class="nn">mood_engine</span> <span class="kn">import</span> <span class="n">MoodEngine</span>
+from mood_engine import MoodEngine
 
-<span class="n">API_BASE</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:5000&quot;</span>
-<span class="n">POLL_INTERVAL_MS</span> <span class="o">=</span> <span class="mi">30000</span>
-<span class="n">CROSSFADE_DURATION_MS</span> <span class="o">=</span> <span class="mi">3000</span>
-
-
-<span class="k">class</span> <span class="nc">Signals</span><span class="p">(</span><span class="n">QObject</span><span class="p">):</span>
-    <span class="n">state_updated</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
-    <span class="n">track_changed</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>   <span class="c1"># title, mood</span>
-    <span class="n">log_message</span>   <span class="o">=</span> <span class="n">Signal</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+API_BASE = &quot;http://localhost:5000&quot;
+POLL_INTERVAL_MS = 30000
+CROSSFADE_DURATION_MS = 3000
 
 
-<span class="k">class</span> <span class="nc">Aniket</span><span class="o">-</span><span class="n">pet</span><span class="o">-</span><span class="n">projectPlayer</span><span class="p">(</span><span class="n">QMainWindow</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">engine</span> <span class="o">=</span> <span class="n">MoodEngine</span><span class="p">(</span><span class="s2">&quot;catalogue.json&quot;</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">signals</span> <span class="o">=</span> <span class="n">Signals</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">radar_enabled</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_track</span> <span class="o">=</span> <span class="kc">None</span>
+class Signals(QObject):
+    state_updated = Signal(dict)
+    track_changed = Signal(str, str)   # title, mood
+    log_message   = Signal(str)
 
-        <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">frequency</span><span class="o">=</span><span class="mi">44100</span><span class="p">,</span> <span class="n">size</span><span class="o">=-</span><span class="mi">16</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">buffer</span><span class="o">=</span><span class="mi">2048</span><span class="p">)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">_setup_ui</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_connect_signals</span><span class="p">()</span>
+class Aniket-pet-projectPlayer(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.engine = MoodEngine(&quot;catalogue.json&quot;)
+        self.signals = Signals()
+        self.radar_enabled = False
+        self.current_track = None
 
-        <span class="c1"># Poll timer: fires every 30s when radar engine is active</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span> <span class="o">=</span> <span class="n">QTimer</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">timeout</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_poll_and_adapt</span><span class="p">)</span>
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
 
-    <span class="k">def</span> <span class="nf">toggle_radar_engine</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">radar_enabled</span> <span class="o">=</span> <span class="n">enabled</span>
-        <span class="k">if</span> <span class="n">enabled</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">POLL_INTERVAL_MS</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;Radar engine ON&quot;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_poll_and_adapt</span><span class="p">()</span>  <span class="c1"># immediate first check</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">poll_timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;Radar engine OFF&quot;</span><span class="p">)</span>
+        self._setup_ui()
+        self._connect_signals()
 
-    <span class="k">def</span> <span class="nf">_poll_and_adapt</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Runs in main thread via QTimer.</span>
-<span class="sd">        Fetches current radar state, decides whether to switch music.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">def</span> <span class="nf">fetch</span><span class="p">():</span>
-            <span class="k">try</span><span class="p">:</span>
-                <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">API_BASE</span><span class="si">}</span><span class="s2">/state&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
-                <span class="n">resp</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
-                <span class="n">state</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">state_updated</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_switch</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;level&quot;</span><span class="p">])</span>
-            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;API error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        # Poll timer: fires every 30s when radar engine is active
+        self.poll_timer = QTimer()
+        self.poll_timer.timeout.connect(self._poll_and_adapt)
 
-        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">fetch</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    def toggle_radar_engine(self, enabled: bool):
+        self.radar_enabled = enabled
+        if enabled:
+            self.poll_timer.start(POLL_INTERVAL_MS)
+            self.signals.log_message.emit(&quot;Radar engine ON&quot;)
+            self._poll_and_adapt()  # immediate first check
+        else:
+            self.poll_timer.stop()
+            self.signals.log_message.emit(&quot;Radar engine OFF&quot;)
 
-    <span class="k">def</span> <span class="nf">_maybe_switch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">immediate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">should_switch_now</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+    def _poll_and_adapt(self):
+        &quot;&quot;&quot;
+        Runs in main thread via QTimer.
+        Fetches current radar state, decides whether to switch music.
+        &quot;&quot;&quot;
+        def fetch():
+            try:
+                resp = requests.get(f&quot;{API_BASE}/state&quot;, timeout=3)
+                resp.raise_for_status()
+                state = resp.json()
+                self.signals.state_updated.emit(state)
+                self._maybe_switch(state[&quot;level&quot;])
+            except Exception as e:
+                self.signals.log_message.emit(f&quot;API error: {e}&quot;)
 
-        <span class="k">if</span> <span class="n">immediate</span><span class="p">:</span>
-            <span class="c1"># Mood category changed: crossfade now</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_crossfade_to_next</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># Same mood: queue next track for when current finishes</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">get_busy</span><span class="p">():</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_play_next</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+        threading.Thread(target=fetch, daemon=True).start()
 
-    <span class="k">def</span> <span class="nf">_crossfade_to_next</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">track</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">get_next_track</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">track</span><span class="p">:</span>
-            <span class="k">return</span>
+    def _maybe_switch(self, level: str):
+        immediate = self.engine.should_switch_now(level)
 
-        <span class="c1"># Fade out current</span>
-        <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">fadeout</span><span class="p">(</span><span class="n">CROSSFADE_DURATION_MS</span><span class="p">)</span>
+        if immediate:
+            # Mood category changed: crossfade now
+            self._crossfade_to_next(level)
+        else:
+            # Same mood: queue next track for when current finishes
+            if not pygame.mixer.music.get_busy():
+                self._play_next(level)
 
-        <span class="c1"># Schedule fade in after crossfade duration</span>
-        <span class="n">QTimer</span><span class="o">.</span><span class="n">singleShot</span><span class="p">(</span><span class="n">CROSSFADE_DURATION_MS</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_and_play</span><span class="p">(</span><span class="n">track</span><span class="p">))</span>
+    def _crossfade_to_next(self, level: str):
+        track = self.engine.get_next_track(level)
+        if not track:
+            return
 
-    <span class="k">def</span> <span class="nf">_load_and_play</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">track</span><span class="p">):</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
-            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
-            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">play</span><span class="p">()</span>
+        # Fade out current
+        pygame.mixer.music.fadeout(CROSSFADE_DURATION_MS)
 
-            <span class="c1"># Fade in over 2 seconds</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_fade_in</span><span class="p">(</span><span class="n">target_volume</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">duration_ms</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span>
+        # Schedule fade in after crossfade duration
+        QTimer.singleShot(CROSSFADE_DURATION_MS, lambda: self._load_and_play(track))
 
-            <span class="bp">self</span><span class="o">.</span><span class="n">current_track</span> <span class="o">=</span> <span class="n">track</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">track_changed</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">title</span><span class="p">,</span> <span class="n">track</span><span class="o">.</span><span class="n">mood</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Now playing: </span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> [</span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">genre</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">track</span><span class="o">.</span><span class="n">bpm</span><span class="si">}</span><span class="s2"> BPM]&quot;</span>
-            <span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">signals</span><span class="o">.</span><span class="n">log_message</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Playback error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    def _load_and_play(self, track):
+        try:
+            pygame.mixer.music.load(track.file)
+            pygame.mixer.music.set_volume(0.0)
+            pygame.mixer.music.play()
 
-    <span class="k">def</span> <span class="nf">_fade_in</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target_volume</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-        <span class="n">steps</span> <span class="o">=</span> <span class="mi">20</span>
-        <span class="n">step_ms</span> <span class="o">=</span> <span class="n">duration_ms</span> <span class="o">//</span> <span class="n">steps</span>
-        <span class="n">step_vol</span> <span class="o">=</span> <span class="n">target_volume</span> <span class="o">/</span> <span class="n">steps</span>
-        <span class="n">current_vol</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+            # Fade in over 2 seconds
+            self._fade_in(target_volume=0.8, duration_ms=2000)
 
-        <span class="k">def</span> <span class="nf">step</span><span class="p">():</span>
-            <span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">step_vol</span>
-            <span class="k">if</span> <span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">target_volume</span><span class="p">:</span>
-                <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="n">target_volume</span><span class="p">)</span>
-                <span class="k">return</span>
-            <span class="n">pygame</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">music</span><span class="o">.</span><span class="n">set_volume</span><span class="p">(</span><span class="n">current_vol</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-            <span class="n">QTimer</span><span class="o">.</span><span class="n">singleShot</span><span class="p">(</span><span class="n">step_ms</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
+            self.current_track = track
+            self.signals.track_changed.emit(track.title, track.mood)
+            self.signals.log_message.emit(
+                f&quot;Now playing: {track.title} [{track.genre}, {track.bpm} BPM]&quot;
+            )
+        except Exception as e:
+            self.signals.log_message.emit(f&quot;Playback error: {e}&quot;)
 
-        <span class="n">step</span><span class="p">()</span>
+    def _fade_in(self, target_volume: float, duration_ms: int):
+        steps = 20
+        step_ms = duration_ms // steps
+        step_vol = target_volume / steps
+        current_vol = [0.0]
 
-    <span class="k">def</span> <span class="nf">_play_next</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">track</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine</span><span class="o">.</span><span class="n">get_next_track</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">track</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_load_and_play</span><span class="p">(</span><span class="n">track</span><span class="p">)</span>
-</code></pre></div>
+        def step():
+            current_vol[0] += step_vol
+            if current_vol[0] &gt;= target_volume:
+                pygame.mixer.music.set_volume(target_volume)
+                return
+            pygame.mixer.music.set_volume(current_vol[0])
+            QTimer.singleShot(step_ms, step)
+
+        step()
+
+    def _play_next(self, level: str):
+        track = self.engine.get_next_track(level)
+        if track:
+            self._load_and_play(track)
+</code></pre>
 
 <p>The crossfade implementation deserves attention. <code>pygame.mixer.music.fadeout()</code> fades the outgoing track. <code>_fade_in()</code> uses a recursive QTimer chain to increment volume in 20 steps over 2 seconds. The result is a 3-second crossfade: 1 second of overlap where both tracks play at low volume, which sounds intentional rather than abrupt.</p>
 <hr />
 <h2 id="integrating-with-the-aniket-pet-project-ad-server">Integrating With the Aniket-pet-project Ad Server<a class="headerlink" href="#integrating-with-the-aniket-pet-project-ad-server" title="Permanent link">&para;</a></h2>
 <p>For a production deployment inside the Aniket-pet-project infrastructure, the <code>catalogue.json</code> file is replaced by a query against the Aniket-pet-project music library, which stores tracks in Elasticsearch with fields including <code>bpm</code>, <code>genre</code>, <code>energylevel</code>, <code>defined_search_tags</code>, and <code>license</code>.</p>
 <p>The mood engine&rsquo;s <code>get_next_track</code> method can be extended to query Elasticsearch directly:</p>
-<div class="code-block"><pre><span></span><code><span class="kn">from</span> <span class="nn">elasticsearch</span> <span class="kn">import</span> <span class="n">Elasticsearch</span>
+<pre class="code-block"><code class="language-python">from elasticsearch import Elasticsearch
 
-<span class="k">class</span> <span class="nc">Aniket</span><span class="o">-</span><span class="n">pet</span><span class="o">-</span><span class="n">projectMoodEngine</span><span class="p">(</span><span class="n">MoodEngine</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">es_host</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;tracks&quot;</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">es</span> <span class="o">=</span> <span class="n">Elasticsearch</span><span class="p">([</span><span class="n">es_host</span><span class="p">])</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="kc">None</span>
+class Aniket-pet-projectMoodEngine(MoodEngine):
+    def __init__(self, es_host: str, index: str = &quot;tracks&quot;):
+        self.es = Elasticsearch([es_host])
+        self.index = index
+        self.last_played = []
+        self.current_mood = None
 
-    <span class="k">def</span> <span class="nf">get_next_track</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">mood</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">level_to_mood</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-        <span class="n">bpm_min</span><span class="p">,</span> <span class="n">bpm_max</span> <span class="o">=</span> <span class="n">MOOD_BPM_RANGE</span><span class="p">[</span><span class="n">mood</span><span class="p">]</span>
+    def get_next_track(self, level: str):
+        mood = self.level_to_mood(level)
+        bpm_min, bpm_max = MOOD_BPM_RANGE[mood]
 
-        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
-                <span class="s2">&quot;bool&quot;</span><span class="p">:</span> <span class="p">{</span>
-                    <span class="s2">&quot;must&quot;</span><span class="p">:</span> <span class="p">[</span>
-                        <span class="p">{</span><span class="s2">&quot;term&quot;</span><span class="p">:</span>  <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}},</span>
-                        <span class="p">{</span><span class="s2">&quot;range&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;bpm&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="n">bpm_min</span><span class="p">,</span> <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="n">bpm_max</span><span class="p">}}},</span>
-                    <span class="p">],</span>
-                    <span class="s2">&quot;must_not&quot;</span><span class="p">:</span> <span class="p">[</span>
-                        <span class="p">{</span><span class="s2">&quot;terms&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;filepath&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">[</span><span class="o">-</span><span class="mi">5</span><span class="p">:]}}</span>
-                    <span class="p">]</span>
-                <span class="p">}</span>
-            <span class="p">},</span>
-            <span class="s2">&quot;sort&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;_score&quot;</span><span class="p">:</span> <span class="s2">&quot;desc&quot;</span><span class="p">}],</span>
-            <span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="mi">10</span>
-        <span class="p">}</span>
+        query = {
+            &quot;query&quot;: {
+                &quot;bool&quot;: {
+                    &quot;must&quot;: [
+                        {&quot;term&quot;:  {&quot;status&quot;: 1}},
+                        {&quot;range&quot;: {&quot;bpm&quot;: {&quot;gte&quot;: bpm_min, &quot;lte&quot;: bpm_max}}},
+                    ],
+                    &quot;must_not&quot;: [
+                        {&quot;terms&quot;: {&quot;filepath&quot;: self.last_played[-5:]}}
+                    ]
+                }
+            },
+            &quot;sort&quot;: [{&quot;_score&quot;: &quot;desc&quot;}],
+            &quot;size&quot;: 10
+        }
 
-        <span class="c1"># Bias towards matching energy level</span>
-        <span class="n">level_energy_map</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;empty&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;busy&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;crowded&quot;</span><span class="p">:</span> <span class="mi">5</span>
-        <span class="p">}</span>
-        <span class="n">target_energy</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">level_energy_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
-        <span class="n">query</span><span class="p">[</span><span class="s2">&quot;query&quot;</span><span class="p">][</span><span class="s2">&quot;bool&quot;</span><span class="p">][</span><span class="s2">&quot;should&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="p">{</span><span class="s2">&quot;term&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;energylevel&quot;</span><span class="p">:</span> <span class="n">target_energy</span><span class="p">}}</span>
-        <span class="p">]</span>
+        # Bias towards matching energy level
+        level_energy_map = {
+            &quot;empty&quot;: 1, &quot;quiet&quot;: 2, &quot;active&quot;: 3, &quot;busy&quot;: 4, &quot;crowded&quot;: 5
+        }
+        target_energy = str(level_energy_map.get(level, 3))
+        query[&quot;query&quot;][&quot;bool&quot;][&quot;should&quot;] = [
+            {&quot;term&quot;: {&quot;energylevel&quot;: target_energy}}
+        ]
 
-        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="n">query</span><span class="p">)</span>
-        <span class="n">hits</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;hits&quot;</span><span class="p">][</span><span class="s2">&quot;hits&quot;</span><span class="p">]</span>
+        result = self.es.search(index=self.index, body=query)
+        hits = result[&quot;hits&quot;][&quot;hits&quot;]
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">hits</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
+        if not hits:
+            return None
 
-        <span class="c1"># Pick randomly from top 5 results to avoid deterministic rotation</span>
-        <span class="kn">import</span> <span class="nn">random</span>
-        <span class="n">selected_source</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">hits</span><span class="p">[:</span><span class="mi">5</span><span class="p">])[</span><span class="s2">&quot;_source&quot;</span><span class="p">]</span>
+        # Pick randomly from top 5 results to avoid deterministic rotation
+        import random
+        selected_source = random.choice(hits[:5])[&quot;_source&quot;]
 
-        <span class="n">track</span> <span class="o">=</span> <span class="n">Track</span><span class="p">(</span>
-            <span class="n">title</span>    <span class="o">=</span> <span class="n">selected_source</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">],</span>
-            <span class="n">file</span>     <span class="o">=</span> <span class="n">selected_source</span><span class="p">[</span><span class="s2">&quot;filepath&quot;</span><span class="p">],</span>
-            <span class="n">mood</span>     <span class="o">=</span> <span class="n">mood</span><span class="p">,</span>
-            <span class="n">genre</span>    <span class="o">=</span> <span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;genre&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
-            <span class="n">bpm</span>      <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bpm&quot;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)),</span>
-            <span class="n">energy</span>   <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;energylevel&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)),</span>
-            <span class="n">duration</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">selected_source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;duration&quot;</span><span class="p">,</span> <span class="mi">180</span><span class="p">)),</span>
-        <span class="p">)</span>
+        track = Track(
+            title    = selected_source[&quot;title&quot;],
+            file     = selected_source[&quot;filepath&quot;],
+            mood     = mood,
+            genre    = selected_source.get(&quot;genre&quot;, &quot;&quot;),
+            bpm      = int(selected_source.get(&quot;bpm&quot;, 100)),
+            energy   = int(selected_source.get(&quot;energylevel&quot;, 3)),
+            duration = int(selected_source.get(&quot;duration&quot;, 180)),
+        )
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">track</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">15</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">last_played</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        self.last_played.append(track.file)
+        if len(self.last_played) &gt; 15:
+            self.last_played.pop(0)
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_mood</span> <span class="o">=</span> <span class="n">mood</span>
-        <span class="k">return</span> <span class="n">track</span>
-</code></pre></div>
+        self.current_mood = mood
+        return track
+</code></pre>
 
 <p>This connects the radar hardware directly to the existing Aniket-pet-project music library. The field names (<code>bpm</code>, <code>energylevel</code>, <code>filepath</code>, <code>status</code>) map directly to what is in the Elasticsearch index. The BPM guardrails from the mood engine apply on top of whatever the library contains, so a track tagged as Pop with BPM 160 does not get played in an <code>active</code> setting even if the genre filter would otherwise permit it.</p>
 <hr />
 <h2 id="deployment-layout">Deployment Layout<a class="headerlink" href="#deployment-layout" title="Permanent link">&para;</a></h2>
 <p>The full system runs on a single machine inside the venue. A Raspberry Pi 4 is sufficient. The ES32 talks to it over the local WiFi network.</p>
-<div class="code-block"><pre><span></span><code>Venue Network
+<pre class="code-block"><code>Venue Network
 ├── ESP32 (radar sensor, WiFi client)
 │     UART → RD-03E mmWave radar
 │     HTTP POST → /state every 30s
@@ -1180,31 +1180,31 @@ footer a:hover { color: var(--text); }
       MoodEngine (mood_engine.py)
       PySide6 Player (player.py)
       Audio out → venue PA system
-</code></pre></div>
+</code></pre>
 
 <p>The Pi connects to the PA system via 3.5mm stereo out or via USB audio interface for better quality. No cloud dependency. No external API calls during normal operation. The entire system runs offline after the initial software setup.</p>
 <p>The Flask API and the player are started as systemd services so they restart on reboot:</p>
-<div class="code-block"><pre><span></span><code><span class="c1"># /etc/systemd/system/aniket-pet-project-api.service</span>
-<span class="k">[Unit]</span>
-<span class="na">Description</span><span class="o">=</span><span class="s">Aniket-pet-project State API</span>
-<span class="na">After</span><span class="o">=</span><span class="s">network.target</span>
+<pre class="code-block"><code class="language-ini"># /etc/systemd/system/aniket-pet-project-api.service
+[Unit]
+Description=Aniket-pet-project State API
+After=network.target
 
-<span class="k">[Service]</span>
-<span class="na">User</span><span class="o">=</span><span class="s">pi</span>
-<span class="na">WorkingDirectory</span><span class="o">=</span><span class="s">/home/pi/aniket-pet-project</span>
-<span class="na">ExecStart</span><span class="o">=</span><span class="s">/home/pi/aniket-pet-project/venv/bin/python api.py</span>
-<span class="na">Restart</span><span class="o">=</span><span class="s">always</span>
-<span class="na">RestartSec</span><span class="o">=</span><span class="s">5</span>
+[Service]
+User=pi
+WorkingDirectory=/home/pi/aniket-pet-project
+ExecStart=/home/pi/aniket-pet-project/venv/bin/python api.py
+Restart=always
+RestartSec=5
 
-<span class="k">[Install]</span>
-<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
-</code></pre></div>
+[Install]
+WantedBy=multi-user.target
+</code></pre>
 
-<div class="code-block"><pre><span></span><code>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>aniket-pet-project-api
-sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>aniket-pet-project-player
-sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>aniket-pet-project-api
-sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>aniket-pet-project-player
-</code></pre></div>
+<pre class="code-block"><code class="language-bash">sudo systemctl enable aniket-pet-project-api
+sudo systemctl enable aniket-pet-project-player
+sudo systemctl start aniket-pet-project-api
+sudo systemctl start aniket-pet-project-player
+</code></pre>
 
 <hr />
 <h2 id="limitations-and-what-comes-next">Limitations and What Comes Next<a class="headerlink" href="#limitations-and-what-comes-next" title="Permanent link">&para;</a></h2>

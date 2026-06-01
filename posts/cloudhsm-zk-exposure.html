@@ -445,163 +445,163 @@ footer a:hover { color: var(--text); }
 <p>The repository has three main components.</p>
 <p><code>chsm.py</code> handles CloudHSM cluster provisioning. It automates the full lifecycle from a local machine with AWS credentials, creates the cluster, provisions the HSM, signs the CSR with a self-signed CA, initializes the cluster, and generates the AES-256 key inside the HSM. All AWS operations use <code>boto3</code> with no dependency on the AWS CLI. State is persisted to <code>hsm_state.json</code> so phases are resumable if interrupted.</p>
 <p><code>app.py</code> is a Flask API server that exposes HSM operations as REST endpoints. It runs inside the VPC on an EC2 instance that has CloudHSM network access via TCP 2223-2225 to the HSM ENI. The important endpoints are:</p>
-<div class="code-block"><pre><span></span><code>POST /api/encrypt        Accept plaintext, return ciphertext_b64
+<pre class="code-block"><code>POST /api/encrypt        Accept plaintext, return ciphertext_b64
 POST /api/decrypt        Accept ciphertext_b64, return plaintext
 POST /api/memory/scan    Scan /proc/self/mem for key material, return verdict
 GET  /api/memory/snapshot Python GC object count snapshot
-</code></pre></div>
+</code></pre>
 
 <p>The memory scan endpoint is the proof mechanism. After every encrypt or decrypt operation, you can trigger a live forensic scan of the Flask process&rsquo;s own memory and verify that no key bytes are present.</p>
 <p><code>index.html</code> is a single-file frontend dashboard. No build toolchain required. It includes an architecture diagram, encrypt/decrypt UI, and a memory forensics panel that shows the scan verdict live.</p>
 <hr />
 <h2 id="the-pkcs11-integration-in-python">The PKCS#11 Integration in Python<a class="headerlink" href="#the-pkcs11-integration-in-python" title="Permanent link">&para;</a></h2>
 <p>The Python side is straightforward once the CloudHSM SDK5 is installed and configured. The <code>python-pkcs11</code> library wraps the native library.</p>
-<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">pkcs11</span>
-<span class="kn">from</span> <span class="nn">pkcs11</span> <span class="kn">import</span> <span class="n">Mechanism</span><span class="p">,</span> <span class="n">KeyType</span><span class="p">,</span> <span class="n">ObjectClass</span>
-<span class="kn">import</span> <span class="nn">os</span>
+<pre class="code-block"><code class="language-python">import pkcs11
+from pkcs11 import Mechanism, KeyType, ObjectClass
+import os
 
-<span class="n">PKCS11_LIB</span> <span class="o">=</span> <span class="s1">&#39;/opt/cloudhsm/lib/libcloudhsm_pkcs11.so&#39;</span>
-<span class="n">HSM_CU_USER</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;HSM_CU_USER&#39;</span><span class="p">]</span>
-<span class="n">HSM_CU_PASSWORD</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;HSM_CU_PASSWORD&#39;</span><span class="p">]</span>
-<span class="n">KEY_LABEL</span> <span class="o">=</span> <span class="s1">&#39;gold-aes-256&#39;</span>
-
-
-<span class="k">def</span> <span class="nf">get_hsm_session</span><span class="p">():</span>
-    <span class="n">lib</span> <span class="o">=</span> <span class="n">pkcs11</span><span class="o">.</span><span class="n">lib</span><span class="p">(</span><span class="n">PKCS11_LIB</span><span class="p">)</span>
-    <span class="n">token</span> <span class="o">=</span> <span class="n">lib</span><span class="o">.</span><span class="n">get_token</span><span class="p">(</span><span class="n">token_label</span><span class="o">=</span><span class="s1">&#39;hsm1&#39;</span><span class="p">)</span>
-    <span class="c1"># Opens an authenticated PKCS#11 session</span>
-    <span class="n">session</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">user_pin</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">HSM_CU_USER</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">HSM_CU_PASSWORD</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">session</span>
+PKCS11_LIB = '/opt/cloudhsm/lib/libcloudhsm_pkcs11.so'
+HSM_CU_USER = os.environ['HSM_CU_USER']
+HSM_CU_PASSWORD = os.environ['HSM_CU_PASSWORD']
+KEY_LABEL = 'gold-aes-256'
 
 
-<span class="k">def</span> <span class="nf">ensure_key</span><span class="p">():</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate AES-256 key in HSM if it does not already exist.&quot;&quot;&quot;</span>
-    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="c1"># Attempt to find existing key</span>
-            <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
-                <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
-                <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
-                <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
-            <span class="p">)</span>
-        <span class="k">except</span> <span class="n">pkcs11</span><span class="o">.</span><span class="n">NoSuchKey</span><span class="p">:</span>
-            <span class="c1"># Generate inside HSM hardware RNG</span>
-            <span class="n">session</span><span class="o">.</span><span class="n">generate_key</span><span class="p">(</span>
-                <span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
-                <span class="mi">256</span><span class="p">,</span>
-                <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span><span class="p">,</span>
-                <span class="n">store</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># persist across sessions</span>
-                <span class="n">template</span><span class="o">=</span><span class="p">{</span>
-                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">SENSITIVE</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">EXTRACTABLE</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">ENCRYPT</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                    <span class="n">pkcs11</span><span class="o">.</span><span class="n">Attribute</span><span class="o">.</span><span class="n">DECRYPT</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                <span class="p">}</span>
-            <span class="p">)</span>
+def get_hsm_session():
+    lib = pkcs11.lib(PKCS11_LIB)
+    token = lib.get_token(token_label='hsm1')
+    # Opens an authenticated PKCS#11 session
+    session = token.open(user_pin=f'{HSM_CU_USER}:{HSM_CU_PASSWORD}')
+    return session
 
 
-<span class="k">def</span> <span class="nf">encrypt</span><span class="p">(</span><span class="n">plaintext</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
-        <span class="n">key</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
-            <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
-            <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
-            <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
-        <span class="p">)</span>
-        <span class="c1"># iv is generated locally; key operation happens inside HSM</span>
-        <span class="n">iv</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">generate_random</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
-        <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encrypt</span><span class="p">(</span>
-            <span class="n">plaintext</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">),</span>
-            <span class="n">mechanism</span><span class="o">=</span><span class="n">Mechanism</span><span class="o">.</span><span class="n">AES_CBC_PAD</span><span class="p">,</span>
-            <span class="n">mechanism_param</span><span class="o">=</span><span class="n">iv</span>
-        <span class="p">)</span>
-        <span class="k">return</span> <span class="n">iv</span> <span class="o">+</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">ciphertext</span><span class="p">)</span>
+def ensure_key():
+    &quot;&quot;&quot;Generate AES-256 key in HSM if it does not already exist.&quot;&quot;&quot;
+    with get_hsm_session() as session:
+        try:
+            # Attempt to find existing key
+            session.get_key(
+                object_class=ObjectClass.SECRET_KEY,
+                key_type=KeyType.AES,
+                label=KEY_LABEL
+            )
+        except pkcs11.NoSuchKey:
+            # Generate inside HSM hardware RNG
+            session.generate_key(
+                KeyType.AES,
+                256,
+                label=KEY_LABEL,
+                store=True,  # persist across sessions
+                template={
+                    pkcs11.Attribute.SENSITIVE: True,
+                    pkcs11.Attribute.EXTRACTABLE: False,
+                    pkcs11.Attribute.ENCRYPT: True,
+                    pkcs11.Attribute.DECRYPT: True,
+                }
+            )
 
 
-<span class="k">def</span> <span class="nf">decrypt</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">get_hsm_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
-        <span class="n">key</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">get_key</span><span class="p">(</span>
-            <span class="n">object_class</span><span class="o">=</span><span class="n">ObjectClass</span><span class="o">.</span><span class="n">SECRET_KEY</span><span class="p">,</span>
-            <span class="n">key_type</span><span class="o">=</span><span class="n">KeyType</span><span class="o">.</span><span class="n">AES</span><span class="p">,</span>
-            <span class="n">label</span><span class="o">=</span><span class="n">KEY_LABEL</span>
-        <span class="p">)</span>
-        <span class="n">iv</span><span class="p">,</span> <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:</span><span class="mi">16</span><span class="p">],</span> <span class="n">data</span><span class="p">[</span><span class="mi">16</span><span class="p">:]</span>
-        <span class="n">plaintext</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span>
-            <span class="n">ciphertext</span><span class="p">,</span>
-            <span class="n">mechanism</span><span class="o">=</span><span class="n">Mechanism</span><span class="o">.</span><span class="n">AES_CBC_PAD</span><span class="p">,</span>
-            <span class="n">mechanism_param</span><span class="o">=</span><span class="n">iv</span>
-        <span class="p">)</span>
-        <span class="k">return</span> <span class="n">plaintext</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span>
-</code></pre></div>
+def encrypt(plaintext: str) -&gt; bytes:
+    with get_hsm_session() as session:
+        key = session.get_key(
+            object_class=ObjectClass.SECRET_KEY,
+            key_type=KeyType.AES,
+            label=KEY_LABEL
+        )
+        # iv is generated locally; key operation happens inside HSM
+        iv = session.generate_random(16)
+        ciphertext = key.encrypt(
+            plaintext.encode('utf-8'),
+            mechanism=Mechanism.AES_CBC_PAD,
+            mechanism_param=iv
+        )
+        return iv + bytes(ciphertext)
+
+
+def decrypt(data: bytes) -&gt; str:
+    with get_hsm_session() as session:
+        key = session.get_key(
+            object_class=ObjectClass.SECRET_KEY,
+            key_type=KeyType.AES,
+            label=KEY_LABEL
+        )
+        iv, ciphertext = data[:16], data[16:]
+        plaintext = key.decrypt(
+            ciphertext,
+            mechanism=Mechanism.AES_CBC_PAD,
+            mechanism_param=iv
+        )
+        return plaintext.decode('utf-8')
+</code></pre>
 
 <p>The <code>key</code> object here is a handle. It is an integer reference to an object in HSM-managed space. <code>key.encrypt()</code> is a remote procedure call to the HSM hardware. The <code>ciphertext</code> that comes back is bytes. The <code>plaintext</code> going in is bytes. The key that performed the operation never left the HSM, and never appeared on the Python heap.</p>
 <hr />
 <h2 id="the-memory-forensics-proof">The Memory Forensics Proof<a class="headerlink" href="#the-memory-forensics-proof" title="Permanent link">&para;</a></h2>
 <p>The claim that the key never touches RAM needs to be verifiable, not just asserted. The <code>/api/memory/scan</code> endpoint does this by scanning the Flask process&rsquo;s own memory.</p>
-<div class="code-block"><pre><span></span><code><span class="kn">import</span> <span class="nn">re</span>
-<span class="kn">import</span> <span class="nn">struct</span>
+<pre class="code-block"><code class="language-python">import re
+import struct
 
-<span class="k">def</span> <span class="nf">scan_process_memory_for_key</span><span class="p">(</span><span class="n">key_bytes_hint</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Read /proc/self/maps to enumerate all readable memory regions,</span>
-<span class="sd">    then scan each region for the known key material.</span>
-<span class="sd">    Since we do not have the key bytes (that is the point), we scan</span>
-<span class="sd">    for patterns that would indicate AES key material: high-entropy</span>
-<span class="sd">    32-byte sequences not matching known Python object headers.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">suspicious_regions</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="n">maps_path</span> <span class="o">=</span> <span class="s1">&#39;/proc/self/maps&#39;</span>
-    <span class="n">mem_path</span> <span class="o">=</span> <span class="s1">&#39;/proc/self/mem&#39;</span>
+def scan_process_memory_for_key(key_bytes_hint: bytes = None) -&gt; dict:
+    &quot;&quot;&quot;
+    Read /proc/self/maps to enumerate all readable memory regions,
+    then scan each region for the known key material.
+    Since we do not have the key bytes (that is the point), we scan
+    for patterns that would indicate AES key material: high-entropy
+    32-byte sequences not matching known Python object headers.
+    &quot;&quot;&quot;
+    suspicious_regions = []
+    maps_path = '/proc/self/maps'
+    mem_path = '/proc/self/mem'
 
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">maps_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">maps_file</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">maps_file</span><span class="p">:</span>
-            <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="k">continue</span>
-            <span class="k">if</span> <span class="s1">&#39;r&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
-                <span class="k">continue</span>  <span class="c1"># skip non-readable regions</span>
+    with open(maps_path, 'r') as maps_file:
+        for line in maps_file:
+            parts = line.split()
+            if len(parts) &lt; 2:
+                continue
+            if 'r' not in parts[1]:
+                continue  # skip non-readable regions
 
-            <span class="n">addr_range</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)</span>
-            <span class="n">start</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">addr_range</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">16</span><span class="p">)</span>
-            <span class="n">end</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">addr_range</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">16</span><span class="p">)</span>
-            <span class="n">region_name</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">5</span> <span class="k">else</span> <span class="s1">&#39;anonymous&#39;</span>
+            addr_range = parts[0].split('-')
+            start = int(addr_range[0], 16)
+            end = int(addr_range[1], 16)
+            region_name = parts[5] if len(parts) &gt; 5 else 'anonymous'
 
-            <span class="c1"># Skip very large regions (stack, shared libs) for PoC speed</span>
-            <span class="k">if</span> <span class="n">end</span> <span class="o">-</span> <span class="n">start</span> <span class="o">&gt;</span> <span class="mi">10</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">:</span>
-                <span class="k">continue</span>
+            # Skip very large regions (stack, shared libs) for PoC speed
+            if end - start &gt; 10 * 1024 * 1024:
+                continue
 
-            <span class="k">try</span><span class="p">:</span>
-                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mem_path</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">mem_file</span><span class="p">:</span>
-                    <span class="n">mem_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>
-                    <span class="n">region_data</span> <span class="o">=</span> <span class="n">mem_file</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">end</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span>
+            try:
+                with open(mem_path, 'rb') as mem_file:
+                    mem_file.seek(start)
+                    region_data = mem_file.read(end - start)
 
-                <span class="c1"># Look for 32-byte sequences with high Shannon entropy</span>
-                <span class="c1"># Real AES keys have near-maximum entropy (close to 8 bits/byte)</span>
-                <span class="n">high_entropy_blocks</span> <span class="o">=</span> <span class="n">find_high_entropy_blocks</span><span class="p">(</span><span class="n">region_data</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">high_entropy_blocks</span><span class="p">:</span>
-                    <span class="n">suspicious_regions</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-                        <span class="s1">&#39;region&#39;</span><span class="p">:</span> <span class="n">region_name</span><span class="p">,</span>
-                        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="nb">hex</span><span class="p">(</span><span class="n">start</span><span class="p">),</span>
-                        <span class="s1">&#39;blocks&#39;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">high_entropy_blocks</span><span class="p">)</span>
-                    <span class="p">})</span>
+                # Look for 32-byte sequences with high Shannon entropy
+                # Real AES keys have near-maximum entropy (close to 8 bits/byte)
+                high_entropy_blocks = find_high_entropy_blocks(region_data)
+                if high_entropy_blocks:
+                    suspicious_regions.append({
+                        'region': region_name,
+                        'address': hex(start),
+                        'blocks': len(high_entropy_blocks)
+                    })
 
-            <span class="k">except</span> <span class="p">(</span><span class="ne">PermissionError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
-                <span class="k">continue</span>
+            except (PermissionError, OSError):
+                continue
 
-    <span class="n">verdict</span> <span class="o">=</span> <span class="s1">&#39;KEY_NOT_IN_MEMORY&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">suspicious_regions</span> <span class="k">else</span> <span class="s1">&#39;SUSPICIOUS_REGIONS_FOUND&#39;</span>
-    <span class="k">return</span> <span class="p">{</span>
-        <span class="s1">&#39;verdict&#39;</span><span class="p">:</span> <span class="n">verdict</span><span class="p">,</span>
-        <span class="s1">&#39;suspicious&#39;</span><span class="p">:</span> <span class="n">suspicious_regions</span><span class="p">,</span>
-        <span class="s1">&#39;scanned_at&#39;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
-    <span class="p">}</span>
-</code></pre></div>
+    verdict = 'KEY_NOT_IN_MEMORY' if not suspicious_regions else 'SUSPICIOUS_REGIONS_FOUND'
+    return {
+        'verdict': verdict,
+        'suspicious': suspicious_regions,
+        'scanned_at': datetime.utcnow().isoformat()
+    }
+</code></pre>
 
 <p>Running this after an encrypt operation returns:</p>
-<div class="code-block"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;verdict&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;KEY_NOT_IN_MEMORY&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;suspicious&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;scanned_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-04-15T10:23:41.002Z&quot;</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="code-block"><code class="language-json">{
+  &quot;verdict&quot;: &quot;KEY_NOT_IN_MEMORY&quot;,
+  &quot;suspicious&quot;: [],
+  &quot;scanned_at&quot;: &quot;2025-04-15T10:23:41.002Z&quot;
+}
+</code></pre>
 
 <p>This is not a claim. This is a forensic scan of the live process memory running immediately after the encryption operation completed. The key bytes are not there because they were never there. The HSM performed the operation internally.</p>
 <hr />
@@ -644,45 +644,45 @@ GET  /api/memory/snapshot Python GC object count snapshot
 <hr />
 <h2 id="provisioning-what-the-setup-actually-looks-like">Provisioning: What the Setup Actually Looks Like<a class="headerlink" href="#provisioning-what-the-setup-actually-looks-like" title="Permanent link">&para;</a></h2>
 <p>The provisioning flow in <code>chsm.py</code> runs in three phases. Phase 1 runs locally and creates the CloudHSM cluster, provisions the HSM, signs the CSR with a self-signed CA, and initializes the cluster. All of this is <code>boto3</code> calls with no AWS CLI dependency.</p>
-<div class="code-block"><pre><span></span><code><span class="k">def</span> <span class="nf">phase1_provision</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
-    <span class="n">ec2</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;ec2&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">aws_creds</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
-    <span class="n">hsm2</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;cloudhsmv2&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">aws_creds</span><span class="p">(</span><span class="n">config</span><span class="p">))</span>
+<pre class="code-block"><code class="language-python">def phase1_provision(config: dict):
+    ec2 = boto3.client('ec2', **aws_creds(config))
+    hsm2 = boto3.client('cloudhsmv2', **aws_creds(config))
 
-    <span class="c1"># Create cluster</span>
-    <span class="n">cluster</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">create_cluster</span><span class="p">(</span>
-        <span class="n">HsmType</span><span class="o">=</span><span class="s1">&#39;hsm2m.medium&#39;</span><span class="p">,</span>
-        <span class="n">SubnetIds</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;subnets&#39;</span><span class="p">],</span>
-        <span class="n">TagList</span><span class="o">=</span><span class="p">[{</span><span class="s1">&#39;Key&#39;</span><span class="p">:</span> <span class="s1">&#39;Name&#39;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">:</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;cluster_name&#39;</span><span class="p">]}]</span>
-    <span class="p">)</span>
-    <span class="n">cluster_id</span> <span class="o">=</span> <span class="n">cluster</span><span class="p">[</span><span class="s1">&#39;Cluster&#39;</span><span class="p">][</span><span class="s1">&#39;ClusterId&#39;</span><span class="p">]</span>
-    <span class="n">save_state</span><span class="p">({</span><span class="s1">&#39;cluster_id&#39;</span><span class="p">:</span> <span class="n">cluster_id</span><span class="p">})</span>
+    # Create cluster
+    cluster = hsm2.create_cluster(
+        HsmType='hsm2m.medium',
+        SubnetIds=config['subnets'],
+        TagList=[{'Key': 'Name', 'Value': config['cluster_name']}]
+    )
+    cluster_id = cluster['Cluster']['ClusterId']
+    save_state({'cluster_id': cluster_id})
 
-    <span class="c1"># Wait for cluster to reach UNINITIALIZED state</span>
-    <span class="n">wait_for_cluster_state</span><span class="p">(</span><span class="n">hsm2</span><span class="p">,</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="s1">&#39;UNINITIALIZED&#39;</span><span class="p">)</span>
+    # Wait for cluster to reach UNINITIALIZED state
+    wait_for_cluster_state(hsm2, cluster_id, 'UNINITIALIZED')
 
-    <span class="c1"># Provision one HSM in the specified AZ</span>
-    <span class="n">hsm</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">create_hsm</span><span class="p">(</span>
-        <span class="n">ClusterId</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
-        <span class="n">AvailabilityZone</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;hsm_az&#39;</span><span class="p">]</span>
-    <span class="p">)</span>
-    <span class="n">wait_for_hsm_state</span><span class="p">(</span><span class="n">hsm2</span><span class="p">,</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="s1">&#39;ACTIVE&#39;</span><span class="p">)</span>
+    # Provision one HSM in the specified AZ
+    hsm = hsm2.create_hsm(
+        ClusterId=cluster_id,
+        AvailabilityZone=config['hsm_az']
+    )
+    wait_for_hsm_state(hsm2, cluster_id, 'ACTIVE')
 
-    <span class="c1"># Get CSR for cluster certificate signing</span>
-    <span class="n">cluster_detail</span> <span class="o">=</span> <span class="n">hsm2</span><span class="o">.</span><span class="n">describe_clusters</span><span class="p">(</span>
-        <span class="n">Filters</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;clusterIds&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">cluster_id</span><span class="p">]}</span>
-    <span class="p">)[</span><span class="s1">&#39;Clusters&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">csr_pem</span> <span class="o">=</span> <span class="n">cluster_detail</span><span class="p">[</span><span class="s1">&#39;Certificates&#39;</span><span class="p">][</span><span class="s1">&#39;ClusterCsr&#39;</span><span class="p">]</span>
+    # Get CSR for cluster certificate signing
+    cluster_detail = hsm2.describe_clusters(
+        Filters={'clusterIds': [cluster_id]}
+    )['Clusters'][0]
+    csr_pem = cluster_detail['Certificates']['ClusterCsr']
 
-    <span class="c1"># Sign CSR using Python cryptography library (no openssl binary needed)</span>
-    <span class="n">signed_cert</span><span class="p">,</span> <span class="n">ca_cert</span> <span class="o">=</span> <span class="n">sign_csr_with_self_signed_ca</span><span class="p">(</span><span class="n">csr_pem</span><span class="p">)</span>
+    # Sign CSR using Python cryptography library (no openssl binary needed)
+    signed_cert, ca_cert = sign_csr_with_self_signed_ca(csr_pem)
 
-    <span class="c1"># Initialize cluster with signed certificate</span>
-    <span class="n">hsm2</span><span class="o">.</span><span class="n">initialize_cluster</span><span class="p">(</span>
-        <span class="n">ClusterId</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
-        <span class="n">SignedCert</span><span class="o">=</span><span class="n">signed_cert</span><span class="p">,</span>
-        <span class="n">TrustAnchor</span><span class="o">=</span><span class="n">ca_cert</span>
-    <span class="p">)</span>
-</code></pre></div>
+    # Initialize cluster with signed certificate
+    hsm2.initialize_cluster(
+        ClusterId=cluster_id,
+        SignedCert=signed_cert,
+        TrustAnchor=ca_cert
+    )
+</code></pre>
 
 <p>Phase 2 is a one-time manual step on the EC2 instance using <code>cloudhsm-cli</code> to activate the cluster with the PRECO password and create the Crypto User that the application will use. Phase 3 connects via PKCS#11, generates the AES-256 key, and runs an encrypt/decrypt verification.</p>
 <p>The security group wiring between the EC2 instance and the HSM ENI is a common stumbling block. The repository includes <code>cloudhsm_sg.py</code>, a support script that auto-discovers and attaches the CloudHSM cluster security group to a specified EC2 instance by private IP.</p>
@@ -693,11 +693,11 @@ GET  /api/memory/snapshot Python GC object count snapshot
 <p>For high-throughput scenarios, consider a Key Encryption Key hierarchy. Use the HSM to wrap Data Encryption Keys stored in your database. The DEK is decrypted by the HSM and used for bulk data encryption, but the per-operation HSM call wraps and unwraps the DEK rather than performing every data encryption inside the HSM. This reduces direct HSM operations per transaction while keeping the master key non-exportable.</p>
 <p>CloudHSM audit logging should be enabled to CloudWatch Logs from day one. The HSM produces an audit trail of every key operation, every session open, every key generation, independent of your application logs. In a PCI-DSS or ISO 27001 audit, this is the audit trail that matters.</p>
 <p>Cost is roughly $2.10 per hour per HSM. A two-HSM HA cluster is approximately $3,024 per month. There is no per-operation charge, so high-throughput workloads are cost-efficient at scale. Delete immediately after testing if you are just running the PoC.</p>
-<div class="code-block"><pre><span></span><code>python<span class="w"> </span>chsm.py<span class="w"> </span>--delete<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--access-key<span class="w"> </span>&lt;AWS_ACCESS_KEY_ID&gt;<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--secret-key<span class="w"> </span>&lt;AWS_SECRET_ACCESS_KEY&gt;<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--cluster-id<span class="w"> </span>&lt;CLUSTER_ID&gt;
-</code></pre></div>
+<pre class="code-block"><code class="language-bash">python chsm.py --delete \
+  --access-key &lt;AWS_ACCESS_KEY_ID&gt; \
+  --secret-key &lt;AWS_SECRET_ACCESS_KEY&gt; \
+  --cluster-id &lt;CLUSTER_ID&gt;
+</code></pre>
 
 <hr />
 <h2 id="compliance-posture">Compliance Posture<a class="headerlink" href="#compliance-posture" title="Permanent link">&para;</a></h2>
@@ -708,28 +708,28 @@ GET  /api/memory/snapshot Python GC object count snapshot
 <hr />
 <h2 id="running-the-poc">Running the PoC<a class="headerlink" href="#running-the-poc" title="Permanent link">&para;</a></h2>
 <p>The full setup is documented in the README at <a href="https://github.com/aniketmaithani/hsm-zke-poc">github.com/aniketmaithani/hsm-zke-poc</a>. The quick version:</p>
-<div class="code-block"><pre><span></span><code><span class="c1"># Local machine</span>
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/aniketmaithani/hsm-zke-poc
-<span class="nb">cd</span><span class="w"> </span>hsm-zke-poc
-pip<span class="w"> </span>install<span class="w"> </span>boto3<span class="w"> </span>cryptography
+<pre class="code-block"><code class="language-bash"># Local machine
+git clone https://github.com/aniketmaithani/hsm-zke-poc
+cd hsm-zke-poc
+pip install boto3 cryptography
 
-<span class="c1"># Provision CloudHSM cluster (takes ~15 minutes)</span>
-python<span class="w"> </span>chsm.py<span class="w"> </span>--phase1<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--region<span class="w"> </span>ap-south-1<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--vpc-id<span class="w"> </span>vpc-xxxxxxxxx<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--subnets<span class="w"> </span>subnet-aaa,subnet-bbb<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--hsm-az<span class="w"> </span>ap-south-1a<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--cluster-name<span class="w"> </span>my-hsm-cluster
+# Provision CloudHSM cluster (takes ~15 minutes)
+python chsm.py --phase1 \
+  --region ap-south-1 \
+  --vpc-id vpc-xxxxxxxxx \
+  --subnets subnet-aaa,subnet-bbb \
+  --hsm-az ap-south-1a \
+  --cluster-name my-hsm-cluster
 
-<span class="c1"># On EC2: install SDK, activate cluster, create CU (see README Phase 2)</span>
+# On EC2: install SDK, activate cluster, create CU (see README Phase 2)
 
-<span class="c1"># On EC2: run the Flask API</span>
-<span class="nv">HSM_CU_USER</span><span class="o">=</span>appuser<span class="w"> </span><span class="nv">HSM_CU_PASSWORD</span><span class="o">=</span>yourpassword<span class="w"> </span>python<span class="w"> </span>app.py
+# On EC2: run the Flask API
+HSM_CU_USER=appuser HSM_CU_PASSWORD=yourpassword python app.py
 
-<span class="c1"># Local: SSH tunnel + open index.html</span>
-ssh<span class="w"> </span>-L<span class="w"> </span><span class="m">5050</span>:localhost:5050<span class="w"> </span>ubuntu@&lt;EC2_IP&gt;<span class="w"> </span>-i<span class="w"> </span>your-key.pem<span class="w"> </span>-N<span class="w"> </span><span class="p">&amp;</span>
-open<span class="w"> </span>index.html
-</code></pre></div>
+# Local: SSH tunnel + open index.html
+ssh -L 5050:localhost:5050 ubuntu@&lt;EC2_IP&gt; -i your-key.pem -N &amp;
+open index.html
+</code></pre>
 
 <p>Then trigger the memory scan after an encrypt operation and observe the verdict. That is the entire point of the PoC: not to claim the key is safe, but to demonstrate it forensically.</p>
 <hr />
